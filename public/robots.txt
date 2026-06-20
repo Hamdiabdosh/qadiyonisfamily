@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /auth
+
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://qadiyonis.space/sitemap.xml

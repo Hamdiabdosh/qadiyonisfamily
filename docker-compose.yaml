@@ -1,0 +1,72 @@
+# Deploy on Coolify with "Docker Compose" (not Dockerfile-only).
+#
+# Coolify UI — app service domains (both required):
+#   https://qadiyonis.space:3000
+#   https://www.qadiyonis.space:3000
+# The :3000 suffix tells Traefik the container port. Enable HTTPS on both.
+#
+# Coolify UI — set only: POSTGRES_PASSWORD, SESSION_SECRET, VITE_APP_URL, LLM_API_KEY, VAPID_*.
+# Leave all SERVICE_* vars alone (Coolify auto-manages them; cannot delete from UI).
+# Do NOT set PORT or DATABASE_URL.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: qadiyonis
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d qadiyonis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_URL: ${VITE_APP_URL:-https://qadiyonis.space}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "3000"
+    environment:
+      # Coolify magic vars — declare port so Traefik routes correctly (do not set PORT in Coolify UI).
+      SERVICE_FQDN_APP_3000: ${SERVICE_FQDN_APP_3000:-https://qadiyonis.space:3000}
+      SERVICE_URL_APP_3000: ${SERVICE_URL_APP_3000:-https://qadiyonis.space:3000}
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: 0.0.0.0
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: app
+      POSTGRES_DB: qadiyonis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      VITE_APP_URL: ${VITE_APP_URL:-https://qadiyonis.space}
+      LLM_API_BASE_URL: ${LLM_API_BASE_URL:-https://wadehapi.gitify.site/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-auto}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@qadiyonis.space}
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
+volumes:
+  pgdata:
+  uploads:
