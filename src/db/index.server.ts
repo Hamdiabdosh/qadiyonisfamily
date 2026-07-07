@@ -1,15 +1,21 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { createRequire } from "node:module";
 
 import * as schema from "./schema";
 
-let client: ReturnType<typeof postgres> | undefined;
-let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+const require = createRequire(import.meta.url);
 
-export function getDb() {
+type Sql = ReturnType<typeof import("postgres").default>;
+type Db = ReturnType<typeof import("drizzle-orm/postgres-js").drizzle<typeof schema>>;
+
+let client: Sql | undefined;
+let db: Db | undefined;
+
+export function getDb(): Db {
   if (!db) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
+    const postgres = require("postgres") as typeof import("postgres").default;
+    const { drizzle } = require("drizzle-orm/postgres-js") as typeof import("drizzle-orm/postgres-js");
     client = postgres(url, { max: 10 });
     db = drizzle(client, { schema });
   }

@@ -31,6 +31,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { BuiltByRaafat } from "@/components/brand/built-by-raafat";
 import { useAuth } from "@/lib/auth";
 import type { AdminCounts, AdminView } from "./types";
 
@@ -73,7 +74,7 @@ export function AdminSidebar({ active, counts }: Props) {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="pointer-events-none">
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-root text-root-foreground text-sm font-bold">
-                ሼ
+                Q
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">Qadi Yonis</span>
@@ -150,6 +151,9 @@ export function AdminSidebar({ active, counts }: Props) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <div className="px-2 py-2">
+          <BuiltByRaafat className="text-center text-[10px] text-sidebar-foreground/60" />
+        </div>
       </SidebarFooter>
 
       <SidebarRail />

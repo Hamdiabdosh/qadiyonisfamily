@@ -21,12 +21,11 @@ type RowEdits = Record<I18nLang, string>;
 
 const LANG_LABELS: Record<I18nLang, string> = {
   en: "English",
-  om: "Oromo",
   am: "Amharic",
 };
 
 function editsFromRow(row: AdminTranslationRow): RowEdits {
-  return { en: row.en, om: row.om, am: row.am };
+  return { en: row.en, am: row.am };
 }
 
 function rowIsDirty(row: AdminTranslationRow, edits: RowEdits): boolean {
@@ -184,14 +183,14 @@ export function TranslationsPage() {
   const updateCell = (key: string, lang: I18nLang, value: string) => {
     setEdits((prev) => ({
       ...prev,
-      [key]: { ...(prev[key] ?? { en: "", om: "", am: "" }), [lang]: value },
+      [key]: { ...(prev[key] ?? { en: "", am: "" }), [lang]: value },
     }));
   };
 
   const saveRow = async (row: AdminTranslationRow) => {
     const current = edits[row.key] ?? editsFromRow(row);
     if (!I18N_LANGS.every((lang) => current[lang].trim())) {
-      toast.error("All three languages need a value");
+      toast.error("Both languages need a value");
       return;
     }
 
@@ -248,7 +247,7 @@ export function TranslationsPage() {
         <CardHeader className="px-4 pb-3 pt-4 sm:px-6">
           <CardTitle className="text-base">App translations</CardTitle>
           <CardDescription className="text-pretty">
-            Edit every UI string in English, Oromo, and Amharic. {rows.length} keys total
+            Edit every UI string in English and Amharic. {rows.length} keys total
             {overrideCount > 0 ? ` · ${overrideCount} custom override${overrideCount === 1 ? "" : "s"}` : ""}.
           </CardDescription>
         </CardHeader>
@@ -311,7 +310,7 @@ export function TranslationsPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5}>{emptyState}</TableCell>
+                    <TableCell colSpan={4}>{emptyState}</TableCell>
                   </TableRow>
                 ) : (
                   filtered.map((row) => {

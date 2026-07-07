@@ -301,7 +301,7 @@ export function SettingsPage() {
                       rows.map((row, i) => (i === index ? { ...row, phone: e.target.value } : row)),
                     )
                   }
-                  placeholder="0911357612"
+                  placeholder="0931947040"
                 />
               </div>
               <div className="space-y-1.5">
@@ -313,7 +313,7 @@ export function SettingsPage() {
                       rows.map((row, i) => (i === index ? { ...row, telegram: e.target.value } : row)),
                     )
                   }
-                  placeholder="lahek11"
+                  placeholder="hamdiabdosh43"
                 />
               </div>
             </div>

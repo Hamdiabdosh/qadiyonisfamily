@@ -18,7 +18,7 @@ const TITLES: Record<AdminView, { title: string; description: string }> = {
   feedbacks: { title: "Feedbacks", description: "Reports and messages from members" },
   announcements: { title: "Announcements", description: "Post updates for all members" },
   notifications: { title: "Notifications", description: "Admin alerts and activity" },
-  translations: { title: "Translations", description: "Manage app text in English, Oromo, and Amharic" },
+  translations: { title: "Translations", description: "Manage app text in English and Amharic" },
   settings: { title: "Settings", description: "App configuration and homepage video" },
 };
 

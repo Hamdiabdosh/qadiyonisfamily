@@ -136,7 +136,6 @@ function ProfilePage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="om">Afan Oromo</SelectItem>
                   <SelectItem value="am">አማርኛ</SelectItem>
                 </SelectContent>
               </Select>
@@ -167,28 +166,13 @@ function ProfilePage() {
           </CardContent>
         </Card>
 
-        <ProfileLinkCard href="https://t.me/lahek11" className="overflow-hidden border-primary/15">
-          <img
-            src="/abdushafi.jpg"
-            alt="Abdushafi Abdulkadir"
-            className="size-14 shrink-0 rounded-full border-2 border-primary/20 object-cover shadow-sm"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground">{t("foundedBy")}</p>
-            <p className="font-semibold">Abdushafi Abdulkadir</p>
+        <ProfileLinkCard href="https://t.me/hamdiabdosh43" className="overflow-hidden border-primary/15">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-full border-2 border-primary/20 bg-primary/10 text-lg font-semibold text-primary shadow-sm">
+            ATA
           </div>
-        </ProfileLinkCard>
-
-        <ProfileLinkCard href="https://abdulfetah.site" className="overflow-hidden border-primary/15">
-          <img
-            src="/abdulfetah.jpg"
-            alt="Abdulfetah Jemal"
-            className="size-14 shrink-0 rounded-full border-2 border-primary/20 object-cover shadow-sm"
-          />
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground">{t("developedBy")}</p>
-            <p className="font-semibold">Abdulfetah Jemal</p>
-            <p className="text-sm text-muted-foreground">{t("softwareDeveloper")}</p>
+            <p className="text-xs text-muted-foreground">{t("foundedAndDevelopedBy")}</p>
+            <p className="font-semibold">Abdulhamid Teweleda Abdosh</p>
           </div>
         </ProfileLinkCard>
 

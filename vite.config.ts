@@ -14,4 +14,9 @@ export default defineConfig({
   },
   // Node.js server output for Docker / Coolify deployment (not Cloudflare Workers).
   nitro: { preset: "node-server" },
+  vite: {
+    optimizeDeps: {
+      exclude: ["postgres", "drizzle-orm/postgres-js"],
+    },
+  },
 });

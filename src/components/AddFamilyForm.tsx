@@ -44,6 +44,13 @@ import {
 } from "@/lib/children-by-mother";
 import { enqueueSubmission, listQueue, clearQueueItem } from "@/lib/offline-queue";
 import {
+  findSubmissionDuplicates,
+  formHasKinLinkedParent,
+  linkedMemberIdsFromForm,
+  validateMotherLineCoWives,
+  validateNewKinLink,
+} from "@/lib/submission-validate";
+import {
   DEFAULT_LOCATION,
   LocationSelector,
   locationSelectionToString,
@@ -76,14 +83,25 @@ function hasAliveChosen(alive: AliveChoice): alive is AliveT {
   return alive === "alive" || alive === "dead";
 }
 
-function parentToPayload(p: ParentEntry) {
+function parentToPayload(p: ParentEntry, byId: Map<number, Member>) {
+  if (p.existingId != null) {
+    const existing = byId.get(p.existingId);
+    return {
+      name: p.name,
+      alive: p.alive === "alive",
+      existingId: p.existingId,
+      inKin: existing?.is_in_kin ?? false,
+      kinSide: null,
+      kinAnchorId: null,
+    };
+  }
   return {
     name: p.name,
     alive: p.alive === "alive",
-    existingId: p.existingId,
-    inKin: p.existingId != null ? true : p.inKin === true,
-    kinSide: p.existingId != null ? null : p.inKin ? p.kinSide : null,
-    kinAnchorId: p.existingId != null ? null : p.inKin ? p.kinAnchorId : null,
+    existingId: null,
+    inKin: p.inKin === true,
+    kinSide: p.inKin ? p.kinSide : null,
+    kinAnchorId: p.inKin ? p.kinAnchorId : null,
   };
 }
 
@@ -122,27 +140,10 @@ function getParentLinePreview(parent: ParentEntry, byId: Map<number, Member>): s
 }
 
 function validateParentKin(p: ParentEntry, byId: Map<number, Member>) {
-  if (!p.name.trim()) return true;
-  if (p.existingId) return true;
-  if (p.inKin === false) return true;
-  if (p.inKin !== true || !p.kinSide || !p.kinAnchorId) return false;
-  const chain = p.kinSide === "father" ? fatherChain(p.kinAnchorId, byId) : motherChain(p.kinAnchorId, byId);
-  return chainReachesRoot(chain);
-}
-
-function isParentOutOfKin(p: ParentEntry) {
-  if (p.existingId) return false;
-  return p.inKin === false;
+  return validateNewKinLink(p, byId);
 }
 
 /** Mother-line kin links only this parent; an outside husband's other wives must not be added. */
-function validateMotherLineCoWives(mothers: ParentEntry[]) {
-  const named = mothers.filter((m) => m.name.trim());
-  const hasMotherLineKin = named.some((m) => m.inKin === true && m.kinSide === "mother");
-  if (!hasMotherLineKin) return true;
-  return !named.some(isParentOutOfKin);
-}
-
 const addMoreBtnClass =
   "w-full border-0 bg-none bg-out-alive font-semibold text-out-alive-foreground shadow-md shadow-out-alive/25 hover:bg-out-alive/90 hover:brightness-105";
 
@@ -756,7 +757,18 @@ export function AddFamilyForm({
       toast.error(t("aliveStatusRequired"));
       return;
     }
-    if (!location.trim()) {
+    const memberByIdSubmit = buildMap(allMembers);
+    if (formHasKinLinkedParent(
+      {
+        father: parentToPayload(father, memberByIdSubmit),
+        mothers: namedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
+        location,
+        children: [],
+        submitter: { name: "", phone: "", alive: true },
+        notes: "",
+      },
+      memberByIdSubmit,
+    ) && !location.trim()) {
       toast.error(t("locationRequired"));
       return;
     }
@@ -774,7 +786,6 @@ export function AddFamilyForm({
       toast.error(t("birthOrderRequired"));
       return;
     }
-    const memberByIdSubmit = buildMap(allMembers);
     if (!validateParentKin(father, memberByIdSubmit)) {
       toast.error(father.inKin === true && father.kinAnchorId ? t("kinPathInvalid") : t("parentKinRequired"));
       return;
@@ -785,20 +796,33 @@ export function AddFamilyForm({
         return;
       }
     }
-    if (!validateMotherLineCoWives(mothers)) {
+    if (!validateMotherLineCoWives(mothers, memberByIdSubmit)) {
       toast.error(t("motherLineCoWivesNotRegistered"));
       return;
     }
-    setSubmitting(true);
     const payload: SubmitFamilyPayload = {
-      father: parentToPayload(father),
-      mothers: mothers.filter((m) => m.name.trim()).map(parentToPayload),
+      father: parentToPayload(father, memberByIdSubmit),
+      mothers: namedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
       location,
       children: namedChildren,
       submitter: { name: submitterName, phone: submitterPhone, alive: true },
       notes,
       ...(autoApprove ? { autoApprove: true } : {}),
     };
+    const duplicateExcludeIds = [
+      ...linkedMemberIdsFromForm(payload),
+      ...(initialFamilyUnit?.father?.id ? [initialFamilyUnit.father.id] : []),
+      ...(initialFamilyUnit?.mothers.map((m) => m.id) ?? []),
+      ...(initialFamilyUnit?.children.map((c) => c.id) ?? []),
+    ];
+    const duplicates = findSubmissionDuplicates(payload, allMembers, {
+      excludeMemberIds: duplicateExcludeIds,
+    });
+    if (duplicates.length > 0) {
+      toast.error(`${t("duplicateWarning")} (${duplicates[0].name})`);
+      return;
+    }
+    setSubmitting(true);
     try {
       if (onEditUnit && initialFamilyUnit) {
         const memberIds: SubmissionMemberIds = {

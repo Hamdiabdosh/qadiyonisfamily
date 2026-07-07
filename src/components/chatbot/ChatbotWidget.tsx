@@ -26,7 +26,7 @@ const EMPTY_CONTEXT: ChatbotContext = {
   hasVideo: false,
   hasAudioGuide: false,
   contactAdmins: [],
-  sponsorUrl: "https://t.me/the_wadeh",
+  sponsorUrl: "https://t.me/hamdiabdosh43",
   kinPageConfig: {
     pageTitle: "",
     pageDescription: "",

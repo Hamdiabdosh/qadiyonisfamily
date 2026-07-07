@@ -5,8 +5,7 @@ export type ContactAdmin = {
 };
 
 export const DEFAULT_CONTACT_ADMINS: ContactAdmin[] = [
-  { phone: "0911357612", telegram: "lahek11" },
-  { phone: "0961219838", telegram: "the_wadeh" },
+  { phone: "0931947040", telegram: "hamdiabdosh43" },
 ];
 
 export function parseContactAdmins(raw: string | undefined): ContactAdmin[] {

@@ -1,4 +1,4 @@
-export const I18N_LANGS = ["en", "om", "am"] as const;
+export const I18N_LANGS = ["en", "am"] as const;
 export type I18nLang = (typeof I18N_LANGS)[number];
 
 export type I18nDict = Record<string, string>;
@@ -57,6 +57,7 @@ export const BASE_EN: I18nDict = {
   foreignCountry: "Foreign Country",
   foreignCountryHint: "Family lives outside Ethiopia — region and zone are hidden",
   signInDesc: "Sign in with your phone or admin email.",
+  signInRequired: "Phone or email and password are required.",
   emailOrPhone: "Phone or email",
   emailOrPhonePlaceholder: "+251… or admin@…",
   registerDesc: "Request an account — admin will approve you.",
@@ -84,6 +85,7 @@ export const BASE_EN: I18nDict = {
   galleryEmpty: "No gallery images yet.",
   developedBy: "Developed by",
   foundedBy: "Founded by",
+  foundedAndDevelopedBy: "Founded and developed by",
   softwareDeveloper: "Software Engineer",
   sponsorApp: "Sponsor the App",
   sponsorAppDesc: "Help us bring the family together and preserve the lineage.",
@@ -91,22 +93,22 @@ export const BASE_EN: I18nDict = {
   sponsorServerDesc: "Where every Qadi Yonis app data is stored.",
   sponsorServerPrice: "$52/year",
   sponsorServerPriceEtb: "9,400 Birr",
-  sponsorServerMessage: "Hi Abdulfetah, I would like to sponsor the Qadi Yonis app server ($52/year).",
+  sponsorServerMessage: "Hi Abdulhamid, I would like to sponsor the Qadi Yonis app server ($52/year).",
   sponsorDomainTitle: "Sponsor the domain",
   sponsorDomainDesc: "qadiyonis.space — the app's web address.",
   sponsorDomainPrice: "$10/year",
   sponsorDomainPriceEtb: "1,800 Birr",
-  sponsorDomainMessage: "Hi Abdulfetah, I would like to sponsor the qadiyonis.space domain ($10/year).",
+  sponsorDomainMessage: "Hi Abdulhamid, I would like to sponsor the qadiyonis.space domain ($10/year).",
   sponsorAiTitle: "Sponsor the AI API",
   sponsorAiDesc: "Pay-as-you-go for the Qadi Yonis AI chatbot.",
   sponsorAiPrice: "$0.5 / M tokens",
   sponsorAiPriceEtb: "90 Birr",
-  sponsorAiMessage: "Hi Abdulfetah, I would like to sponsor the Qadi Yonis AI chatbot API.",
+  sponsorAiMessage: "Hi Abdulhamid, I would like to sponsor the Qadi Yonis AI chatbot API.",
   sponsorCharityNote:
     "More contributions will go to charity — supporting struggling people in the kin.",
-  sponsorContactDev: "Contact the developer (Abdulfetah Jemal) to sponsor!",
-  sponsorContactCta: "Message Abdulfetah on Telegram",
-  sponsorContactMessage: "Hi Abdulfetah, I would like to sponsor the Qadi Yonis app.",
+  sponsorContactDev: "Contact Abdulhamid Teweleda Abdosh to sponsor!",
+  sponsorContactCta: "Message Abdulhamid on Telegram",
+  sponsorContactMessage: "Hi Abdulhamid, I would like to sponsor the Qadi Yonis app.",
   addAnotherWife: "Add another wife for this father",
   children: "Children", sons: "Sons", daughters: "Daughters",
   childrenBirthOrderHint: "Optional — leave blank if this family has no children. For each mother, number her children from 1 (oldest). Same number = twins. Each mother's list starts again at 1.",
@@ -172,6 +174,11 @@ export const BASE_EN: I18nDict = {
   all: "All", kinOnly: "Kin Only", outOnly: "Out of Kin Only", aliveOnly: "Alive Only",
   byLineage: "By Lineage", byLocation: "By Location", byGeneration: "By Generation",
   // Tree
+  treeDescription: "Pan, zoom, and tap any member to explore",
+  treeSearchPlaceholder: "Search by name…",
+  treeResults: "results",
+  fitTree: "Fit tree",
+  focusOnMe: "Focus on me",
   generation: "Generation", gen: "Gen",
   fatherLineage: "Father Lineage", motherLineage: "Mother Lineage",
   valid: "Valid", invalid: "Invalid", noLink: "No link to Qadi Yonis",
@@ -216,6 +223,9 @@ export const BASE_EN: I18nDict = {
   email: "Email", password: "Password",
   emailPlaceholder: "admin@qadiyonis.space",
   passwordPlaceholder: "Enter your password",
+  passwordMinHint: "At least 6 characters",
+  signingIn: "Signing in…",
+  requestingAccount: "Submitting request…",
   signInGoogle: "Continue with Google",
   // Admin
   adminSignIn: "Admin access only",
@@ -329,91 +339,12 @@ export const BASE_EN: I18nDict = {
   chatQuickLocation: "Region & zone help",
   chatQuickTree: "How to use the tree",
   chatQuickKin: "Search kin directory",
-};
-
-export const BASE_OM: I18nDict = {
-  ...BASE_EN,
-  appName: "Qadi Yonis",
-  tagline: "Sanyii keenya kunuunsina",
-  home: "Mana", tree: "Sanyii Madaala", explore: "Qorannoo", kinDirectory: "Fira", profile: "Iccitii",
-  kin: "Fira", outOfKin: "Alagga", alive: "Jiraata", dead: "Duʼe",
-  innaLillah: "انا لله وانا اليه راجعون",
-  inKinAlive: "Fira Jiraata", inKinDead: "Fira Duʼe",
-  outAlive: "Alagga Jiraata", outDead: "Alagga Duʼe",
-  parents: "Maatii", father: "Abbaa", mother: "Haadha",
-  fullName: "Maqaa Guutuu", location: "Bakka", currentLocation: "Bakka Jiraatan",
-  foreignCountry: "Biyya Alaa",
-  addAnotherWife: "Niitii biraa abbaa kanaaf ida'i",
-  childrenMotherTabHint: "Tab haadhaa filadhu, achiin ijoollee ishee gadi ida'i.",
-  childrenRemovedWithMother: "Ijoolleen haadhaa haqame waliin walqabatan haqaman.",
-  childOfMother: "Ijoollee",
-  children: "Ijoollee", sons: "Ilmaan", daughters: "Intallan",
-  addAnotherSon: "+ Ilma biraa ida'i", addAnotherDaughter: "+ Intala biraa ida'i",
-  submitter: "Odeeffannoo Galchaa", phone: "Lakkofsa Bilbilaa", notes: "Yaada (filannoo)",
-  submitForApproval: "MIRKANEESSAAF ERGI",
-  son: "Ilma", daughter: "Intala",
-  approve: "Mirkaneessa", reject: "Didduu", edit: "Sirreessi", delete: "Haqi",
-  search: "Barbaadi", goToRoot: "Gara Hundee Deemi",
-  showOutOfKin: "Alagga Argisiisi", hideOutOfKin: "Alagga Dhoksi",
-  viewLineage: "Sanyii Ilaali", viewInTree: "Sanyii keessatti Ilaali",
-  call: "Bilbili", message: "Ergaa Ergi", howAmIRelated: "Akkam wal-quunnamne?",
-  all: "Hunda", kinOnly: "Fira qofa", outOnly: "Alagga qofa", aliveOnly: "Jiraataa qofa",
-  byLineage: "Sanyiin", byLocation: "Bakkaan", byGeneration: "Dhalootaan",
-  generation: "Dhaloota", gen: "Dh.",
-  fatherLineage: "Sanyii Abbaa", motherLineage: "Sanyii Haadha",
-  valid: "Sirrii", invalid: "Sirrii hin taane", noLink: "Qadi Yonis wajjin walitti hin hidhamne",
-  yourProfile: "Iccitii Kee", appSettings: "Qindaa'ina Appii",
-  darkMode: "Halkan Halluu", language: "Afaan", installApp: "Appii Buusi",
-  installAppTitle: "Qadi Yonis Buusi",
-  installAppPurpose:
-    "Sanyii keenya walitti qabsiisuu fi eeguu — oduu, taateewwan, suuraa, kitaabota, fuudha, awwaalchaa, gammachuu fi gadda qooduu, akkasumas wal gargaaruu.",
-  installAppCta:
-    "Buusi — sanyii keenya eegi, oduu, taateewwan, suuraa, kitaabota, fuudha & awwaalchaa qoodi, wal gargaari",
-  installAppNotNow: "Amma miti",
-  installAppIosTitle: "Argii ka'umsa irratti ida'i (iPhone / iPad)",
-  installAppIosStep1: "Safari jalatti Share (□↑) tuqi.",
-  installAppIosStep2: "Gadi buusi, “Add to Home Screen” filadhu.",
-  installAppIosStep3: "“Add” tuqi — appii argii ka'umsa irraa banu dandeessa.",
-  installAppAndroidTitle: "Android irratti buusi",
-  installAppAndroidStep1: "Chrome keessatti menu (⋮) gubbaa mirgaa tuqi.",
-  installAppAndroidStep2: "“Install app” ykn “Add to Home screen” filadhu.",
-  installAppAndroidStep3: "Install mirkaneessi — Qadi Yonis yeroo kamiyyuu argii ka'umsa irraa bani.",
-  installAppAndroidFallback: "Button sun yoo hin mul'in, tarkaanfii menu fayyadami.",
-  notifications: "Beeksisa", fontSize: "Guddina Qubee",
-  small: "Xiqqaa", large: "Guddaa",
-  statistics: "Istaatistiksii Maatii", myContribution: "Gumaacha Koo",
-  contactAdmin: "Bulchaa Quunnami", about: "Waa'ee",
-  approved: "Mirkanaa'e", pending: "Eegama", rejected: "Didame",
-  totalMembers: "Walumaagalatti",
-  youAdded: "Ati ida'an", members: "miseensota",
-  viewMySubmissions: "Ergaalee Koo Ilaali",
-  polygamyStats: "Fuudha Hermaa", endogamyStats: "Wal dhalaa fuudha",
-  growthLast12: "Miseensota (ji'a 12 darbe)",
-  signIn: "Seeni", signUp: "Galmaa'i", signOut: "Bahi",
-  authSkip: "Darbi — osoo hin seeniin ilaali",
-  languageOnboardingTitle: "Afaan kee filadhu",
-  languageOnboardingDesc: "Appii keessatti fayyadamuu barbaaddu filadhu.",
-  languageOnboardingHint: "Yeroo kamiyyuu Profaayilii → Qindaa'inoota App keessatti jijjiiruu dandeessa.",
-  languageOnboardingSkip: "Darbi (Afaan Ingilizii)",
-  email: "Email", password: "Jecha iccitii",
-  signInGoogle: "Google'iin itti fufi",
-  admin: "Bulchaa", adminDashboard: "Boordii Bulchaa",
-  pendingApprovals: "Mirkaneessa Eegaman", approvedMembers: "Miseensota Mirkanaa'an",
-  duplicates: "Adda baasuu walfakkaata", incompleteLineages: "Sanyii hin xumuramne",
-  exportData: "Ragaa Baasi",
-  loading: "Fe'aa jira…", noResults: "Bu'aa hin jiru.",
-  successSubmitted: "Mirkaneessaaf ergameera. Galatoomi!",
-  errorOccurred: "Rakkoon mudate.",
-  addAnotherFamily: "Maatii biraa bakka kanarraa ida'uu?",
-  duplicateWarning: "Maqaa kanaan nama jira.",
-  yourLineage: "Sanyii kee", rootPerson: "Akaakayyuu Hundee", totalCount: "walumaa",
-  sponsorCharityNote:
-    "Kennaa dabalataa gargaarsaaf — namoota fira keessatti rakkatan deeggaruuf ni fayyada.",
+  "footer.builtBy": "Built with care by",
 };
 
 export const BASE_AM: I18nDict = {
   ...BASE_EN,
-  appName: "ዓሊ ሼክ ፈቶ",
+  appName: "Qadi Yonis",
   tagline: "ዝርያችንን እንጠብቃለን",
   home: "መነሻ", tree: "የቤተሰብ ዛፍ", explore: "ያስሱ", kinDirectory: "ዘመድ", profile: "መገለጫ",
   kin: "ዘመድ", outOfKin: "እንግዳ", alive: "በህይወት", dead: "ሞቷል",
@@ -439,9 +370,14 @@ export const BASE_AM: I18nDict = {
   call: "ደውል", message: "መልዕክት", howAmIRelated: "እንዴት ተዛመድን?",
   all: "ሁሉም", kinOnly: "ዘመድ ብቻ", outOnly: "እንግዳ ብቻ", aliveOnly: "በሕይወት ብቻ",
   byLineage: "በዝርያ", byLocation: "በቦታ", byGeneration: "በትውልድ",
+  treeDescription: "ዛፉን ያሳሩ፣ ያጉሉ እና ማንኛውንም አባል ለመመልከት ይንኩ",
+  treeSearchPlaceholder: "በስም ይፈልጉ…",
+  treeResults: "ውጤቶች",
+  fitTree: "ዛፉን አጣጥፍ",
+  focusOnMe: "በእኔ ላይ ያተኩሩ",
   generation: "ትውልድ", gen: "ት.",
   fatherLineage: "የአባት ዝርያ", motherLineage: "የእናት ዝርያ",
-  valid: "ትክክል", invalid: "ትክክል አይደለም", noLink: "ከሼክ ፈቶ ጋር ግንኙነት የለም",
+  valid: "ትክክል", invalid: "ትክክል አይደለም", noLink: "ከ Qadi Yonis ጋር ግንኙነት የለም",
   yourProfile: "የእርስዎ መገለጫ", appSettings: "የመተግበሪያ ቅንብሮች",
   darkMode: "ጨለማ ሁነታ", language: "ቋንቋ", installApp: "መተግበሪያ ጫን",
   installAppTitle: "Qadi Yonis ጫን",
@@ -476,6 +412,10 @@ export const BASE_AM: I18nDict = {
   languageOnboardingHint: "በማንኛውም ጊዜ በመገለጫ → የመተግበሪያ ቅንብሮች ሊቀይሩ ይችላሉ።",
   languageOnboardingSkip: "ዝለል (እንግሊዝኛ)",
   email: "ኢሜይል", password: "የይለፍ ቃል",
+  passwordPlaceholder: "የይለፍ ቃልዎን ያስገቡ",
+  passwordMinHint: "ቢያንስ 6 ቁምፊዎች",
+  signingIn: "በመግባት ላይ…",
+  requestingAccount: "ጥያቄ በመላክ ላይ…",
   signInGoogle: "በGoogle ቀጥል",
   admin: "አስተዳዳሪ", adminDashboard: "የአስተዳዳሪ ዳሽቦርድ",
   pendingApprovals: "በመጠባበቅ ላይ", approvedMembers: "የጸደቁ አባላት",
@@ -489,11 +429,11 @@ export const BASE_AM: I18nDict = {
   yourLineage: "የእርስዎ ዝርያ", rootPerson: "የመጀመሪያ አባት", totalCount: "ጠቅላላ",
   sponsorCharityNote:
     "ተጨማሪ አስተዋጽኦ ለበጎ አድራጎት ይሄዳል — በዘመድ ውስጥ በችግር ላይ ያሉ ሰዎችን ለመደገፍ።",
+  "footer.builtBy": "በክብር የተሰራው",
 };
 
 export const BASE_DICTS: Record<I18nLang, I18nDict> = {
   en: BASE_EN,
-  om: BASE_OM,
   am: BASE_AM,
 };
 
@@ -520,7 +460,6 @@ export function buildMergedDict(lang: I18nLang, overrides: Record<string, string
 export type AdminTranslationRow = {
   key: string;
   en: string;
-  om: string;
   am: string;
   defaults: Record<I18nLang, string>;
   overridden: Record<I18nLang, boolean>;
@@ -542,7 +481,6 @@ export function buildAdminTranslationCatalog(
   return keys.map((key) => {
     const defaults = {
       en: getDefaultTranslation("en", key),
-      om: getDefaultTranslation("om", key),
       am: getDefaultTranslation("am", key),
     };
 
@@ -551,12 +489,10 @@ export function buildAdminTranslationCatalog(
     return {
       key,
       en: read("en"),
-      om: read("om"),
       am: read("am"),
       defaults,
       overridden: {
         en: overrides.has(`en:${key}`),
-        om: overrides.has(`om:${key}`),
         am: overrides.has(`am:${key}`),
       },
     };

@@ -4,7 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { getTranslationsFn } from "@/lib/api/explore.functions";
 import { BASE_DICTS, BASE_EN, buildMergedDict, type TranslationKey } from "@/lib/i18n-dicts";
 
-export type Lang = "en" | "om" | "am";
+export type Lang = "en" | "am";
+
+function normalizeLang(stored: string | null): Lang {
+  if (stored === "am") return "am";
+  return "en";
+}
 
 type Ctx = { lang: Lang; t: (k: TranslationKey) => string; setLang: (l: Lang) => void };
 const I18nCtx = createContext<Ctx | null>(null);
@@ -12,7 +17,7 @@ const I18nCtx = createContext<Ctx | null>(null);
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
     if (typeof window === "undefined") return "en";
-    return (localStorage.getItem("lang") as Lang) || "en";
+    return normalizeLang(localStorage.getItem("lang"));
   });
 
   const { data: overrides = {} } = useQuery({

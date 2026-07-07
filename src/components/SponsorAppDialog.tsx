@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/i18n";
 
-const DEVELOPER_TELEGRAM = "the_wadeh";
-const DEVELOPER_SITE = "https://abdulfetah.site";
+const DEVELOPER_TELEGRAM = "hamdiabdosh43";
 
 function sponsorTelegramUrl(message: string) {
   return `https://t.me/${DEVELOPER_TELEGRAM}?text=${encodeURIComponent(message)}`;
@@ -121,8 +120,8 @@ export function SponsorAppDialog({ open, onOpenChange }: Props) {
             </a>
           </Button>
           <Button asChild variant="ghost" className="w-full text-muted-foreground">
-            <a href={DEVELOPER_SITE} target="_blank" rel="noopener noreferrer">
-              Abdulfetah Jemal
+            <a href={`https://t.me/${DEVELOPER_TELEGRAM}`} target="_blank" rel="noopener noreferrer">
+              Abdulhamid Teweleda Abdosh
             </a>
           </Button>
         </div>

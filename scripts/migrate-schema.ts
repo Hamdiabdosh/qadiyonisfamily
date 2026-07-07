@@ -267,7 +267,7 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
       "default contact_admins",
       `INSERT INTO app_settings (key, value) VALUES (
         'contact_admins',
-        '[{"phone":"0911357612","telegram":"lahek11"},{"phone":"0961219838","telegram":"the_wadeh"}]'
+        '[{"phone":"0931947040","telegram":"hamdiabdosh43"}]'
       ) ON CONFLICT (key) DO NOTHING`,
     );
     await runStatement(
@@ -304,6 +304,7 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
         value = REPLACE(REPLACE(value, 'Ali Sheik Feto', 'Qadi Yonis'), 'Sheik Feto', 'Qadi Yonis')
        WHERE value LIKE '%Sheik Feto%' OR value LIKE '%Ali Sheik Feto%'`,
     );
+    await runStatement(sql, "remove Oromo translations", `DELETE FROM translations WHERE lang = 'om'`);
   }
 
   if (ownsConnection) {

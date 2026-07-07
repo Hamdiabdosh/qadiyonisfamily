@@ -14,7 +14,7 @@ import {
 import { parseContactAdmins } from "@/lib/contact-admins";
 import { parseKinPageConfig } from "@/lib/kin-page-config";
 
-const SPONSOR_TELEGRAM = "https://t.me/the_wadeh";
+const SPONSOR_TELEGRAM = "https://t.me/hamdiabdosh43";
 const MEMBER_SEARCH_LIMIT = 15;
 const EXPLORE_POST_LIMIT = 10;
 
@@ -207,15 +207,14 @@ export async function buildAssistantSystemPrompt(opts: {
     "You are the Qadi Yonis family tree assistant embedded in the mobile web app.",
     "Answer using ONLY the app data below. Be concise (2-5 sentences) unless the user asks for detail.",
     "Guide users to app pages: Home, Tree, Kin Directory, Explore, Gallery, Add Family, Profile, Notifications, Auth.",
-    "For contact admin or sponsorship, point to Profile or the quick-action buttons (Telegram sponsor: @the_wadeh).",
+    "For contact admin or sponsorship, point to Profile or the quick-action buttons (Telegram: @hamdiabdosh43).",
     "Never invent family members. Never share submitter phone numbers from member records.",
     "Contact admin phone/Telegram from CONTACT ADMINS may be shared when asked.",
     `Current page path: ${opts.pathname}`,
     "",
     "## App credits",
-    "Founded by: Abdushafi Abdulkadir (Telegram: @lahek11)",
-    "Developed by: Abdulfetah Jemal, Software Engineer (https://abdulfetah.site)",
-    "Sponsor / support: https://t.me/the_wadeh",
+    "Founded and developed by Abdulhamid Teweleda Abdosh (phone: 0931947040, Telegram: @hamdiabdosh43)",
+    `Sponsor / support: ${SPONSOR_TELEGRAM}`,
     "",
     "## App settings",
     `Instruction video: ${settings.youtube_video_url ? "yes (Home)" : "not configured"}`,

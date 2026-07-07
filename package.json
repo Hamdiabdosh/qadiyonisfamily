@@ -13,6 +13,7 @@
     "db:push:force": "drizzle-kit push --force",
     "db:migrate": "bun run scripts/migrate-schema.ts",
     "db:setup": "bun run scripts/setup-db.ts",
+    "db:seed-admin": "bun run scripts/seed-admin.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

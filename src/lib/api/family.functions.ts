@@ -8,6 +8,7 @@ import { optionalAuth, requireAdmin, requireAuth } from "@/lib/auth-middleware.s
 import { createAdminAlert } from "@/lib/admin-notify.server";
 import { toMember } from "@/lib/db-mapper";
 import { collectKinLinkJumps, formatKinLinkJumpsSummary } from "@/lib/kin-anchor";
+import { buildMap, chainReachesRoot, fatherChain, motherChain } from "@/lib/lineage";
 import { computeLineageFields } from "@/lib/lineage-compute.server";
 
 const parentSchema = z.object({
@@ -129,6 +130,87 @@ async function findMemberByName(name: string) {
     .from(familyMembers)
     .where(ilike(familyMembers.fullName, trimmed));
   return rows.find((r) => r.fullName.trim().toLowerCase() === trimmed.toLowerCase()) ?? null;
+}
+
+function isNewMotherLineKin(parent: z.infer<typeof parentSchema>): boolean {
+  return !parent.existingId && parent.inKin && parent.kinSide === "mother";
+}
+
+function validateNewKinLink(
+  parent: z.infer<typeof parentSchema>,
+  byId: Map<number, ReturnType<typeof toMember>>,
+): boolean {
+  if (!parent.name.trim() || parent.existingId) return true;
+  if (!parent.inKin) return true;
+  if (!parent.kinSide || !parent.kinAnchorId) return false;
+  const chain =
+    parent.kinSide === "father"
+      ? fatherChain(parent.kinAnchorId, byId)
+      : motherChain(parent.kinAnchorId, byId);
+  return chainReachesRoot(chain);
+}
+
+async function resolveParentInKin(parent: z.infer<typeof parentSchema>): Promise<boolean> {
+  if (!parent.name.trim()) return false;
+  if (parent.existingId) {
+    const row = await getMemberById(parent.existingId);
+    return row?.isInKin ?? false;
+  }
+  return !!(parent.inKin && parent.kinSide && parent.kinAnchorId);
+}
+
+async function loadMembersByIdMap() {
+  const db = getDb();
+  const rows = await db.select().from(familyMembers);
+  return buildMap(rows.map(toMember));
+}
+
+async function assertSubmitFamilyValid(data: z.infer<typeof submitPayloadSchema>) {
+  const namedMothers = data.mothers.filter((m) => m.name.trim());
+  const hasMotherLineKin = namedMothers.some((m) => isNewMotherLineKin(m));
+  if (hasMotherLineKin) {
+    for (const m of namedMothers) {
+      if (!(await resolveParentInKin(m))) {
+        throw new Error(
+          "A mother linked through her mother line cannot be submitted with out-of-kin co-wives.",
+        );
+      }
+    }
+  }
+
+  const byId = await loadMembersByIdMap();
+  if (!validateNewKinLink(data.father, byId)) {
+    throw new Error("Father kin link does not reach the root ancestor.");
+  }
+  for (const m of namedMothers) {
+    if (!validateNewKinLink(m, byId)) {
+      throw new Error("Mother kin link does not reach the root ancestor.");
+    }
+  }
+
+  const linkedIds = new Set<number>();
+  if (data.father.existingId) linkedIds.add(data.father.existingId);
+  for (const m of data.mothers) if (m.existingId) linkedIds.add(m.existingId);
+  for (const c of data.children) if (c.existingId) linkedIds.add(c.existingId);
+
+  const assertNameAvailable = async (
+    name: string,
+    existingId: number | null | undefined,
+    role: string,
+  ) => {
+    const trimmed = name.trim();
+    if (!trimmed || existingId) return;
+    const hit = await findMemberByName(trimmed);
+    if (hit && !linkedIds.has(hit.id)) {
+      throw new Error(
+        `"${trimmed}" already exists (${role}) — search and select them from the list instead of typing a new name.`,
+      );
+    }
+  };
+
+  await assertNameAvailable(data.father.name, data.father.existingId, "father");
+  for (const m of data.mothers) await assertNameAvailable(m.name, m.existingId, "mother");
+  for (const c of data.children) await assertNameAvailable(c.name, c.existingId, "child");
 }
 
 async function insertMember(
@@ -813,6 +895,8 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
   .inputValidator(submitPayloadSchema)
   .middleware([requireAuth])
   .handler(async ({ data, context }) => {
+    await assertSubmitFamilyValid(data);
+
     const db = getDb();
     const submitter = data.submitter;
     const autoApprove = Boolean(data.autoApprove && context.isAdmin);
@@ -830,13 +914,6 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
     const submissionId = submission.id;
 
     const namedMothers = data.mothers.filter((m) => m.name.trim());
-    const hasMotherLineKin = namedMothers.some((m) => m.inKin && m.kinSide === "mother");
-    if (hasMotherLineKin && namedMothers.some((m) => !m.inKin)) {
-      throw new Error(
-        "A mother linked through her mother line cannot be submitted with out-of-kin co-wives.",
-      );
-    }
-
     const fatherGetsLocation = await parentGetsLocation(data.father);
     const motherGetsLocation = await Promise.all(data.mothers.map((m) => parentGetsLocation(m)));
     const anyKinParent = fatherGetsLocation || motherGetsLocation.some(Boolean);
@@ -852,7 +929,11 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
       const trimmed = parent.name.trim();
       if (!trimmed) return null;
       const existing = await findMemberByName(trimmed);
-      if (existing) return existing.id;
+      if (existing) {
+        throw new Error(
+          `"${trimmed}" already exists — search and select them from the list instead of typing a new name.`,
+        );
+      }
 
       let linkFatherId: number | null = null;
       let linkMotherId: number | null = null;
@@ -911,7 +992,11 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
     for (const kid of allKids) {
       const motherId = resolveChildMotherId(motherIds, kid.motherIndex ?? 0);
       const existing = await findMemberByName(kid.name);
-      if (existing) continue;
+      if (existing) {
+        throw new Error(
+          `"${kid.name.trim()}" already exists — search and select them from the list instead of typing a new name.`,
+        );
+      }
       const row = await insertMember({
         fullName: kid.name.trim(),
         gender: kid.gender,

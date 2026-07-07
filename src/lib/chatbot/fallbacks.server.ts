@@ -13,16 +13,16 @@ const QUICK_NAV: TopicRule[] = [
   {
     pattern: /who\s+(built|made|created|developed)\s+(this\s+)?(app|application)|who\s+is\s+the\s+developer/i,
     reply:
-      "This app was developed by Abdulfetah Jemal (Software Engineer) — see Profile for his link. It was founded by Abdushafi Abdulkadir.",
+      "This app was founded and developed by Abdulhamid Teweleda Abdosh — see Profile for phone and Telegram.",
   },
   {
     pattern: /who\s+founded|founded\s+by|who\s+started\s+(the\s+)?app/i,
     reply:
-      "The app was founded by Abdushafi Abdulkadir. Abdulfetah Jemal developed it. Visit Profile for their links.",
+      "The app was founded and developed by Abdulhamid Teweleda Abdosh. Visit Profile for contact details.",
   },
   {
     pattern: /^how\s+(do\s+i\s+)?contact\s+(the\s+)?admin/i,
-    reply: "Open Profile → Contact Admin for phone numbers and Telegram. You can also tap Contact admin in this chat.",
+    reply: "Call 0931947040 or message @hamdiabdosh43 on Telegram. You can also open Profile → Contact Admin.",
   },
   {
     pattern: /^how\s+(do\s+i\s+)?sponsor|sponsor\s+(the\s+)?app/i,

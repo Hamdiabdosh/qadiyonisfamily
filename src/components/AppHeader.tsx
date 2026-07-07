@@ -15,7 +15,6 @@ import { useSettings } from "@/lib/settings";
 import { getUserNotificationsFn } from "@/lib/api/content.functions";
 const LANGS: { code: Lang; label: string }[] = [
   { code: "en", label: "English" },
-  { code: "om", label: "Afan Oromo" },
   { code: "am", label: "አማርኛ" },
 ];
 

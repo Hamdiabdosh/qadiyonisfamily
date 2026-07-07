@@ -14,7 +14,6 @@ import { useI18n, type Lang } from "@/lib/i18n";
 const ONBOARDING_KEY = "lang_onboarding_done";
 
 const LANG_OPTIONS: { code: Lang; label: string }[] = [
-  { code: "om", label: "Afan Oromo" },
   { code: "en", label: "English" },
   { code: "am", label: "Amharic" },
 ];

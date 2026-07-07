@@ -1,3 +1,4 @@
+import "@/lib/client-buffer-shim";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet, Link, createRootRouteWithContext, useRouter, HeadContent, Scripts,

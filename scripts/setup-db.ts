@@ -9,15 +9,10 @@ import { getDb } from "../src/db/index.server";
 import {
   appSettings,
   familyMembers,
-  userRoles,
-  users,
 } from "../src/db/schema";
-import { hashPassword } from "../src/lib/auth.server";
 import { childEnv, ensureDatabaseUrl, requireEnv } from "./database-url";
 import { runLegacyMigrations } from "./migrate-schema";
-
-const ADMIN_EMAIL = "admin@qadiyonis.space";
-const ADMIN_PASSWORD = "12341235";
+import { seedAdmin } from "./seed-admin";
 
 async function seedLineage() {
   const db = getDb();
@@ -93,11 +88,11 @@ async function seedLineage() {
   await db
     .insert(appSettings)
     .values([
-      { key: "admin_email", value: ADMIN_EMAIL },
+      { key: "admin_email", value: "admin@qadiyonis.space" },
       {
         key: "contact_admins",
         value:
-          '[{"phone":"0911357612","telegram":"lahek11"},{"phone":"0961219838","telegram":"the_wadeh"}]',
+          '[{"phone":"0931947040","telegram":"hamdiabdosh43"}]',
       },
       {
         key: "kin_page_config",
@@ -108,44 +103,6 @@ async function seedLineage() {
     .onConflictDoNothing();
 
   console.log("✓ Seeded lineage data");
-}
-
-async function seedAdmin() {
-  const db = getDb();
-  const passwordHash = await hashPassword(ADMIN_PASSWORD);
-
-  let [user] = await db.select().from(users).where(eq(users.email, ADMIN_EMAIL)).limit(1);
-
-  if (user) {
-    await db
-      .update(users)
-      .set({ passwordHash, accountStatus: "approved", fullName: user.fullName ?? "Admin" })
-      .where(eq(users.id, user.id));
-    console.log("Admin user exists — password updated.");
-  } else {
-    [user] = await db
-      .insert(users)
-      .values({
-        email: ADMIN_EMAIL,
-        fullName: "Admin",
-        passwordHash,
-        accountStatus: "approved",
-      })
-      .returning();
-    console.log("✓ Created admin user");
-  }
-
-  await db
-    .insert(userRoles)
-    .values({ userId: user.id, role: "admin" })
-    .onConflictDoNothing();
-
-  await db
-    .insert(appSettings)
-    .values({ key: "admin_email", value: ADMIN_EMAIL })
-    .onConflictDoUpdate({ target: appSettings.key, set: { value: ADMIN_EMAIL } });
-
-  console.log(`✓ Admin ready: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
 }
 
 function pushSchema(env: NodeJS.ProcessEnv): void {

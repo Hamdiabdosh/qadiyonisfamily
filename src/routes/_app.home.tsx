@@ -1,19 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { Plus, Users, GitBranch } from "lucide-react";
 
 import { AppHeader } from "@/components/AppHeader";
 import { PageTitleRow } from "@/components/PageTitleRow";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { getPublicSettingsFn, submitFeedbackFn } from "@/lib/api/content.functions";
-import { youtubeEmbedUrl } from "@/lib/youtube";
+import { fetchAllMembers } from "@/lib/family";
 
 export const Route = createFileRoute("/_app/home")({
   ssr: false,
@@ -22,141 +17,63 @@ export const Route = createFileRoute("/_app/home")({
 
 function HomePage() {
   const { t } = useI18n();
-  const qc = useQueryClient();
-  const { data: settings = {} } = useQuery({ queryKey: ["public-settings"], queryFn: getPublicSettingsFn });
-  const embedUrl = youtubeEmbedUrl(settings.youtube_video_url);
+  const { user } = useAuth();
+  const { data: members = [] } = useQuery({
+    queryKey: ["members", "approved"],
+    queryFn: () => fetchAllMembers(false),
+  });
 
-  const [submitterName, setSubmitterName] = useState("");
-  const [submitterPhone, setSubmitterPhone] = useState("");
-  const [feedbackMsg, setFeedbackMsg] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const isFormValid =
-    submitterName.trim().length > 0 &&
-    submitterPhone.trim().length > 0 &&
-    feedbackMsg.trim().length > 0;
-
-  const submitFeedback = async (e?: FormEvent) => {
-    e?.preventDefault();
-    if (!isFormValid) {
-      toast.error(t("feedbackAllRequired"));
-      return;
-    }
-    setSending(true);
-    try {
-      await submitFeedbackFn({
-        data: {
-          submitterName: submitterName.trim(),
-          submitterPhone: submitterPhone.trim(),
-          message: feedbackMsg.trim(),
-        },
-      });
-      toast.success(t("feedbackSent"));
-      setSubmitterName("");
-      setSubmitterPhone("");
-      setFeedbackMsg("");
-      qc.invalidateQueries({ queryKey: ["admin"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("errorOccurred"));
-    } finally {
-      setSending(false);
-    }
-  };
+  const me = members.find(m => m.full_name === user?.fullName);
 
   return (
     <div>
       <AppHeader />
-      <div className="page-content stagger-children space-y-4 px-4 pb-4 pt-2">
-        <PageTitleRow title={t("home")} />
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t("howToRegister")}</CardTitle>
-            <CardDescription>{t("howToRegisterDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 pb-4 px-4">
-            {embedUrl ? (
-              <div className="aspect-video w-full overflow-hidden rounded-xl bg-muted shadow-inner ring-1 ring-primary/10">
-                <iframe
-                  src={embedUrl}
-                  title="How to register family members"
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-lg bg-muted text-sm text-muted-foreground">
-                {t("videoComingSoon")}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="page-content space-y-6 px-4 pb-4 pt-2">
+        <PageTitleRow
+          title={t("home")}
+          description={`Welcome back, ${user?.fullName?.split(" ")[0] || "Family"}`}
+        />
 
-        <Card variant="cta">
-          <CardContent className="space-y-4 pt-6 text-center">
-            <p className="text-lg font-semibold leading-snug">{t("ctaQuestion")}</p>
-            <p className="text-sm text-muted-foreground">{t("ctaDescription")}</p>
-            <Button size="lg" className="w-full text-base font-bold" asChild>
-              <Link to="/add-family">
-                <Plus className="size-5 mr-2" />
-                {t("addFamily")}
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {me && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3 mb-4">
+                <GitBranch className="size-5 text-primary" />
+                <div>
+                  <p className="font-semibold">Your Lineage</p>
+                  <p className="text-sm text-muted-foreground">Quick view of your roots</p>
+                </div>
+              </div>
+              <Button asChild className="w-full" variant="outline">
+                <Link to="/tree">View My Full Lineage</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Button asChild size="lg" className="h-24 flex-col gap-1">
+            <Link to="/add-family">
+              <Plus className="size-6" />
+              Add Member
+            </Link>
+          </Button>
+
+          <Button asChild size="lg" variant="outline" className="h-24 flex-col gap-1">
+            <Link to="/kin">
+              <Users className="size-6" />
+              Find Family
+            </Link>
+          </Button>
+        </div>
 
         <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="size-5 text-primary" />
-              <CardTitle className="text-base">{t("feedbackTitle")}</CardTitle>
-            </div>
-            <CardDescription>{t("feedbackDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-3" onSubmit={submitFeedback} noValidate>
-              <div className="space-y-1.5">
-                <Label htmlFor="feedback-name">
-                  {t("fullName")} <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="feedback-name"
-                  value={submitterName}
-                  onChange={(e) => setSubmitterName(e.target.value)}
-                  placeholder={t("fullName")}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="feedback-phone">
-                  {t("phone")} <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="feedback-phone"
-                  type="tel"
-                  value={submitterPhone}
-                  onChange={(e) => setSubmitterPhone(e.target.value)}
-                  placeholder="+251…"
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="feedback-message">
-                  {t("feedbackMessage")} <span className="text-destructive">*</span>
-                </Label>
-                <Textarea
-                  id="feedback-message"
-                  value={feedbackMsg}
-                  onChange={(e) => setFeedbackMsg(e.target.value)}
-                  placeholder={t("feedbackPlaceholder")}
-                  rows={4}
-                  required
-                />
-              </div>
-              <Button className="w-full" type="submit" disabled={sending || !isFormValid}>
-                {t("sendFeedback")}
-              </Button>
-            </form>
+          <CardContent className="pt-6">
+            <p className="font-medium mb-2">Need help?</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Ask our family assistant or contact admins
+            </p>
+            <Button variant="secondary" className="w-full">Chat with Family Bot</Button>
           </CardContent>
         </Card>
       </div>
