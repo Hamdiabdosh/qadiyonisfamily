@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChildrenByMotherSection } from "@/components/ChildrenByMotherSection";
+import { SiblingOrderReview } from "@/components/SiblingOrderReview";
 import {
   emptyChildrenBucket,
   flattenChildrenBuckets,
@@ -50,6 +51,12 @@ import {
   validateMotherLineCoWives,
   validateNewKinLink,
 } from "@/lib/submission-validate";
+import {
+  assignSequentialBirthOrder,
+  buildOrderedChildDrafts,
+  validateGlobalBirthOrder,
+  type OrderedChildDraft,
+} from "@/lib/sibling-order";
 import {
   DEFAULT_LOCATION,
   LocationSelector,
@@ -626,12 +633,20 @@ export function AddFamilyForm({
   autoApprove,
   initialFamilyUnit,
   onEditUnit,
+  mode = "newFamily",
+  selfMemberId,
+  defaultSubmitterName,
+  defaultSubmitterPhone,
 }: {
   onSubmitted?: () => void;
   /** Admin dashboard: members are approved immediately. */
   autoApprove?: boolean;
   initialFamilyUnit?: FamilyUnit;
   onEditUnit?: (form: SubmitFamilyPayload, memberIds: SubmissionMemberIds) => Promise<void>;
+  mode?: "newFamily" | "extendSelf" | "extendAncestor";
+  selfMemberId?: number | null;
+  defaultSubmitterName?: string;
+  defaultSubmitterPhone?: string;
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -646,6 +661,7 @@ export function AddFamilyForm({
 
   const [parentsOpen, setParentsOpen] = useState(true);
   const [childrenOpen, setChildrenOpen] = useState(true);
+  const [siblingOrderOpen, setSiblingOrderOpen] = useState(true);
   const [submitterOpen, setSubmitterOpen] = useState(true);
 
   const [father, setFather] = useState<ParentEntry>(() => {
@@ -682,8 +698,12 @@ export function AddFamilyForm({
     return childrenBucketsFromFlat(kids);
   });
   const [activeMotherTab, setActiveMotherTab] = useState("0");
-  const [submitterName, setSubmitterName] = useState(initialFamilyUnit ? "Admin Edit" : "");
-  const [submitterPhone, setSubmitterPhone] = useState(initialFamilyUnit ? "000" : "");
+  const [submitterName, setSubmitterName] = useState(
+    initialFamilyUnit ? "Admin Edit" : (defaultSubmitterName ?? ""),
+  );
+  const [submitterPhone, setSubmitterPhone] = useState(
+    initialFamilyUnit ? "000" : (defaultSubmitterPhone ?? ""),
+  );
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -706,6 +726,13 @@ export function AddFamilyForm({
 
   const rootMember = useMemo(() => allMembers.find((m) => m.is_root && m.is_approved), [allMembers]);
   const namedMothers = useMemo(() => mothers.filter((m) => m.name.trim()), [mothers]);
+  const motherNames = useMemo(() => namedMothers.map((m) => m.name.trim()), [namedMothers]);
+  const namedChildren = useMemo(
+    () => flattenChildrenBuckets(childrenByMother).filter((c) => c.name.trim()),
+    [childrenByMother],
+  );
+  const [orderedChildren, setOrderedChildren] = useState<OrderedChildDraft[]>([]);
+  const knownSubmitter = mode === "extendSelf" && !!defaultSubmitterName && !!defaultSubmitterPhone;
 
   useEffect(() => {
     const count = namedMothers.length;
@@ -719,11 +746,44 @@ export function AddFamilyForm({
     setActiveMotherTab((tab) => (Number(tab) >= Math.max(count, 1) ? "0" : tab));
   }, [namedMothers.length, t]);
 
+  useEffect(() => {
+    const next = buildOrderedChildDrafts(assignSequentialBirthOrder(namedChildren));
+    if (next.length === 0) {
+      setOrderedChildren([]);
+      return;
+    }
+
+    setOrderedChildren((prev) => {
+      if (prev.length === 0) return next;
+      const prevByKey = new Map(prev.map((c) => [c.key, c]));
+      const stitched = next.map((n) => prevByKey.get(n.key) ?? n);
+      return assignSequentialBirthOrder(stitched);
+    });
+  }, [namedChildren]);
+
+  useEffect(() => {
+    if (mode !== "extendSelf" || !selfMemberId) return;
+    const me = allMembers.find((m) => m.id === selfMemberId);
+    if (!me || me.gender !== "male") return;
+    setFather((prev) => {
+      if (prev.existingId || prev.name.trim()) return prev;
+      return {
+        name: me.full_name,
+        alive: me.is_alive ? "alive" : "dead",
+        existingId: me.id,
+        inKin: true,
+        kinSide: null,
+        kinAnchorId: null,
+      };
+    });
+  }, [mode, selfMemberId, allMembers]);
+
   const reset = (keepLocation = false) => {
     setFather(emptyParent());
     setMothers([emptyParent()]);
     if (!keepLocation) setLocationSelection({ ...DEFAULT_LOCATION });
     setChildrenByMother({ 0: emptyChildrenBucket() });
+    setOrderedChildren([]);
     setActiveMotherTab("0");
     setNotes("");
     setSubmitterName("");
@@ -781,9 +841,14 @@ export function AddFamilyForm({
       toast.error(t("aliveStatusRequired"));
       return;
     }
-    const namedChildren = flattenChildrenBuckets(childrenByMother);
-    if (namedChildren.some((c) => !c.birthOrder || c.birthOrder < 1)) {
+    if (orderedChildren.some((c) => !c.birthOrder || c.birthOrder < 1)) {
       toast.error(t("birthOrderRequired"));
+      return;
+    }
+    try {
+      validateGlobalBirthOrder(orderedChildren);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("birthOrderRequired"));
       return;
     }
     if (!validateParentKin(father, memberByIdSubmit)) {
@@ -804,7 +869,7 @@ export function AddFamilyForm({
       father: parentToPayload(father, memberByIdSubmit),
       mothers: namedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
       location,
-      children: namedChildren,
+      children: orderedChildren.map(({ key: _key, ...child }) => child),
       submitter: { name: submitterName, phone: submitterPhone, alive: true },
       notes,
       ...(autoApprove ? { autoApprove: true } : {}),
@@ -958,6 +1023,19 @@ export function AddFamilyForm({
       </div>
 
       <div className="space-y-2">
+        <SectionCard title={t("siblingOrderTitle")} open={siblingOrderOpen} onOpenChange={setSiblingOrderOpen}>
+          <CardContent>
+            <SiblingOrderReview
+              children={namedChildren}
+              motherNames={motherNames}
+              ordered={orderedChildren}
+              onChange={(next) => setOrderedChildren(assignSequentialBirthOrder(next))}
+            />
+          </CardContent>
+        </SectionCard>
+      </div>
+
+      <div className="space-y-2">
         {childrenAudioUrl ? (
           <SectionAudioPlayer
             ref={childrenAudioRef}
@@ -989,18 +1067,27 @@ export function AddFamilyForm({
         ) : null}
         <SectionCard title={t("submitter")} open={submitterOpen} onOpenChange={setSubmitterOpen}>
         <CardContent className="space-y-3" onFocusCapture={() => playSectionAudio("submitter")}>
-          <div className="space-y-1.5">
-            <Label className="text-sm">{t("fullName")} *</Label>
-            <Input
-              value={submitterName}
-              onChange={(e) => setSubmitterName(e.target.value)}
-              placeholder={t("fullName")}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm">{t("phone")} *</Label>
-            <Input type="tel" value={submitterPhone} onChange={(e) => setSubmitterPhone(e.target.value)} placeholder="+251…" />
-          </div>
+          {knownSubmitter ? (
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">{submitterName}</p>
+              <p className="text-muted-foreground">{submitterPhone}</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-sm">{t("fullName")} *</Label>
+                <Input
+                  value={submitterName}
+                  onChange={(e) => setSubmitterName(e.target.value)}
+                  placeholder={t("fullName")}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">{t("phone")} *</Label>
+                <Input type="tel" value={submitterPhone} onChange={(e) => setSubmitterPhone(e.target.value)} placeholder="+251…" />
+              </div>
+            </>
+          )}
           <div className="space-y-1.5">
             <Label className="text-sm">{t("notes")}</Label>
             <Textarea

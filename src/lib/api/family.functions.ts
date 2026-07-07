@@ -3,13 +3,15 @@ import { and, asc, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb } from "@/db/index.server";
-import { appSettings, familyMembers, familySubmissions, memberWives, notifications } from "@/db/schema";
+import { appSettings, familyMembers, familySubmissions, memberWives, notifications, users } from "@/db/schema";
 import { optionalAuth, requireAdmin, requireAuth } from "@/lib/auth-middleware.server";
 import { createAdminAlert } from "@/lib/admin-notify.server";
 import { toMember } from "@/lib/db-mapper";
 import { collectKinLinkJumps, formatKinLinkJumpsSummary } from "@/lib/kin-anchor";
 import { buildMap, chainReachesRoot, fatherChain, motherChain } from "@/lib/lineage";
 import { computeLineageFields } from "@/lib/lineage-compute.server";
+import { recomputeMemberLineage } from "@/lib/lineage-recompute.server";
+import { saveMemberPhoto } from "@/lib/uploads.server";
 
 const parentSchema = z.object({
   name: z.string(),
@@ -58,46 +60,6 @@ export type PendingFamilySubmission = {
   legacy: boolean;
 };
 
-async function recomputeMemberLineage(memberId: number) {
-  const db = getDb();
-  const member = await getMemberById(memberId);
-  if (!member) return;
-  const father = member.fatherId ? await getMemberById(member.fatherId) : null;
-  const mother = member.motherId ? await getMemberById(member.motherId) : null;
-  const lineage = computeLineageFields(
-    member.fullName,
-    member.isRoot,
-    father
-      ? {
-          fullName: father.fullName,
-          isInKin: father.isInKin,
-          generationLevel: father.generationLevel,
-          lineagePathFather: father.lineagePathFather,
-          lineagePathMother: father.lineagePathMother,
-        }
-      : null,
-    mother
-      ? {
-          fullName: mother.fullName,
-          isInKin: mother.isInKin,
-          generationLevel: mother.generationLevel,
-          lineagePathFather: mother.lineagePathFather,
-          lineagePathMother: mother.lineagePathMother,
-        }
-      : null,
-  );
-  await db
-    .update(familyMembers)
-    .set({
-      generationLevel: lineage.generationLevel,
-      isInKin: lineage.isInKin,
-      lineagePathFather: lineage.lineagePathFather,
-      lineagePathMother: lineage.lineagePathMother,
-      updatedAt: new Date(),
-    })
-    .where(eq(familyMembers.id, memberId));
-}
-
 async function getMemberById(id: number) {
   const db = getDb();
   const [row] = await db.select().from(familyMembers).where(eq(familyMembers.id, id)).limit(1);
@@ -119,6 +81,22 @@ function resolveChildMotherId(motherIds: number[], motherIndex: number): number 
     throw new Error("Invalid mother selection for a child");
   }
   return motherIds[motherIndex] ?? null;
+}
+
+function assertGlobalSiblingOrder(children: z.infer<typeof submitPayloadSchema>["children"]) {
+  const named = children.filter((c) => c.name.trim());
+  if (named.length === 0) return;
+  const orders = named.map((c) => c.birthOrder);
+  const uniq = new Set(orders);
+  if (uniq.size !== orders.length) {
+    throw new Error("Duplicate sibling birth order — each child must have a unique rank.");
+  }
+  const sorted = [...orders].sort((a, b) => a - b);
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i] !== i + 1) {
+      throw new Error("Sibling birth order must be consecutive from 1 to the number of children.");
+    }
+  }
 }
 
 async function findMemberByName(name: string) {
@@ -166,6 +144,7 @@ async function loadMembersByIdMap() {
 }
 
 async function assertSubmitFamilyValid(data: z.infer<typeof submitPayloadSchema>) {
+  assertGlobalSiblingOrder(data.children);
   const namedMothers = data.mothers.filter((m) => m.name.trim());
   const hasMotherLineKin = namedMothers.some((m) => isNewMotherLineKin(m));
   if (hasMotherLineKin) {
@@ -500,6 +479,7 @@ async function syncSubmissionMembers(
   memberIds: SubmissionMemberIds,
   submittedByUser: string | null,
 ): Promise<SubmissionMemberIds> {
+  assertGlobalSiblingOrder(form.children);
   const db = getDb();
   const submitter = form.submitter;
   const locationStr = form.location || null;
@@ -554,6 +534,7 @@ async function syncSubmissionMembers(
         .insert(memberWives)
         .values({ husbandId: fatherLinkId, wifeId: row.id })
         .onConflictDoNothing({ target: [memberWives.husbandId, memberWives.wifeId] });
+      await recomputeMemberLineage(row.id);
     }
   }
 
@@ -612,6 +593,7 @@ async function syncApprovedFamilyMembers(
   memberIds: SubmissionMemberIds,
   submittedByUser: string | null,
 ): Promise<SubmissionMemberIds> {
+  assertGlobalSiblingOrder(form.children);
   const db = getDb();
   const submitter = form.submitter;
   const locationStr = form.location || null;
@@ -667,6 +649,7 @@ async function syncApprovedFamilyMembers(
         .insert(memberWives)
         .values({ husbandId: fatherLinkId, wifeId: row.id })
         .onConflictDoNothing({ target: [memberWives.husbandId, memberWives.wifeId] });
+      await recomputeMemberLineage(row.id);
     }
   }
 
@@ -981,6 +964,7 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
             .onConflictDoNothing({
               target: [memberWives.husbandId, memberWives.wifeId],
             });
+          await recomputeMemberLineage(id);
         }
       }
     }
@@ -1065,6 +1049,7 @@ export const approveMemberFn = createServerFn({ method: "POST" })
         updatedAt: new Date(),
       })
       .where(eq(familyMembers.id, data.id));
+    await recomputeMemberLineage(data.id);
     return { ok: true };
   });
 
@@ -1099,6 +1084,71 @@ export const updateMemberAliveFn = createServerFn({ method: "POST" })
       .update(familyMembers)
       .set({ isAlive: data.isAlive, updatedAt: new Date() })
       .where(eq(familyMembers.id, data.id));
+    return { ok: true };
+  });
+
+export const uploadMemberPhotoFn = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      memberId: z.number(),
+      fileBase64: z.string().min(1),
+      mimeType: z.string().min(1),
+    }),
+  )
+  .middleware([optionalAuth])
+  .handler(async ({ data, context }) => {
+    if (!context.isAuthenticated || !context.userId) throw new Error("Unauthorized");
+
+    const member = await getMemberById(data.memberId);
+    if (!member) throw new Error("Member not found");
+
+    if (!context.isAdmin) {
+      const [user] = await getDb()
+        .select({ fullName: users.fullName, memberId: users.memberId })
+        .from(users)
+        .where(eq(users.id, context.userId))
+        .limit(1);
+      const ownsMember = user?.memberId ? user.memberId === member.id : user?.fullName === member.fullName;
+      if (!ownsMember) {
+        throw new Error("You can only update your own profile photo");
+      }
+    }
+
+    const filename = await saveMemberPhoto(data.fileBase64, data.mimeType);
+    await getDb()
+      .update(familyMembers)
+      .set({ photoUrl: filename, updatedAt: new Date() })
+      .where(eq(familyMembers.id, data.memberId));
+
+    return { filename, url: `/uploads/${filename}` };
+  });
+
+export const removeMemberPhotoFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ memberId: z.number() }))
+  .middleware([optionalAuth])
+  .handler(async ({ data, context }) => {
+    if (!context.isAuthenticated || !context.userId) throw new Error("Unauthorized");
+
+    const member = await getMemberById(data.memberId);
+    if (!member) throw new Error("Member not found");
+
+    if (!context.isAdmin) {
+      const [user] = await getDb()
+        .select({ fullName: users.fullName, memberId: users.memberId })
+        .from(users)
+        .where(eq(users.id, context.userId))
+        .limit(1);
+      const ownsMember = user?.memberId ? user.memberId === member.id : user?.fullName === member.fullName;
+      if (!ownsMember) {
+        throw new Error("You can only update your own profile photo");
+      }
+    }
+
+    await getDb()
+      .update(familyMembers)
+      .set({ photoUrl: null, updatedAt: new Date() })
+      .where(eq(familyMembers.id, data.memberId));
+
     return { ok: true };
   });
 

@@ -89,6 +89,14 @@ export async function saveExploreImage(fileBase64: string, mimeType: string): Pr
   return fullFilename;
 }
 
+export async function saveMemberPhoto(fileBase64: string, mimeType: string): Promise<string> {
+  validateImageMime(mimeType);
+  const buffer = decodeBase64File(fileBase64, MAX_IMAGE_BYTES, "Empty image file");
+  const basename = `member-photo-${randomUUID()}`;
+  const { fullFilename } = await processUploadedImage(buffer, basename);
+  return fullFilename;
+}
+
 export async function saveExploreAudio(fileBase64: string, mimeType: string): Promise<string> {
   validateAudioMime(mimeType);
   const buffer = decodeBase64File(fileBase64, MAX_AUDIO_BYTES, "Empty audio file");

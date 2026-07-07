@@ -65,6 +65,21 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
       "users.account_status",
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status account_status NOT NULL DEFAULT 'approved'`,
     );
+    await runStatement(sql, "users.member_id", `ALTER TABLE users ADD COLUMN IF NOT EXISTS member_id bigint`);
+    await runStatement(
+      sql,
+      "users.member_id fk",
+      `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'family_members') THEN
+          ALTER TABLE users
+          ADD CONSTRAINT users_member_id_family_members_id_fk
+          FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE SET NULL;
+        END IF;
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+      `,
+    );
     await runStatement(sql, "users.email nullable", `ALTER TABLE users ALTER COLUMN email DROP NOT NULL`);
     await runStatement(
       sql,
@@ -138,6 +153,11 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
       sql,
       "family_members.submission_id",
       `ALTER TABLE family_members ADD COLUMN IF NOT EXISTS submission_id uuid`,
+    );
+    await runStatement(
+      sql,
+      "family_members.photo_url",
+      `ALTER TABLE family_members ADD COLUMN IF NOT EXISTS photo_url text`,
     );
   }
 

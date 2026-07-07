@@ -26,6 +26,9 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   phone: text("phone").unique(),
   fullName: text("full_name"),
+  memberId: bigint("member_id", { mode: "number" }).references((): AnyPgColumn => familyMembers.id, {
+    onDelete: "set null",
+  }),
   passwordHash: text("password_hash").notNull(),
   accountStatus: accountStatusEnum("account_status").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -63,6 +66,7 @@ export const familyMembers = pgTable("family_members", {
   birthOrder: integer("birth_order"),
   deathYear: integer("death_year"),
   currentLocation: text("current_location"),
+  photoUrl: text("photo_url"),
   submittedBy: text("submitted_by"),
   submitterPhone: text("submitter_phone"),
   submitterIsAlive: boolean("submitter_is_alive").default(true),

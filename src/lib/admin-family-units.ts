@@ -1,5 +1,6 @@
 import type { Member } from "@/lib/family";
 import { sortMembersByBirthOrder } from "@/lib/family";
+import { groupChildrenByMother, type MotherChildGroup } from "@/lib/sibling-order";
 
 export type WifeLink = { husband_id: number; wife_id: number };
 
@@ -9,8 +10,11 @@ export type FamilyUnit = {
   father: Member | null;
   mothers: Member[];
   children: Member[];
+  childrenGlobal: Member[];
+  childrenByMother: MotherChildGroup[];
   location: string | null;
   memberIds: number[];
+  motherLed: boolean;
 };
 
 export type FamilyAnalytics = {
@@ -66,6 +70,9 @@ export function buildFamilyUnits(members: Member[], wives: WifeLink[]): FamilyUn
       }
     }
 
+    const childrenGlobal = sortMembersByBirthOrder(children);
+    const childrenByMother = groupChildrenByMother(children, mothers);
+
     const memberIds = [fatherId, ...mothers.map((m) => m.id), ...children.map((c) => c.id)];
     memberIds.forEach((id) => assigned.add(id));
 
@@ -75,8 +82,34 @@ export function buildFamilyUnits(members: Member[], wives: WifeLink[]): FamilyUn
       father,
       mothers,
       children,
+      childrenGlobal,
+      childrenByMother,
       location: father.current_location ?? mothers[0]?.current_location ?? children[0]?.current_location ?? null,
       memberIds,
+      motherLed: false,
+    });
+  }
+
+  // Mother-led units: mothers with children whose father is not in the approved set
+  for (const m of approved) {
+    if (m.gender !== "female" || assigned.has(m.id)) continue;
+    const kids = sortMembersByBirthOrder(
+      approved.filter((c) => c.mother_id === m.id && (!c.father_id || !byId.has(c.father_id))),
+    );
+    if (kids.length === 0) continue;
+    kids.forEach((c) => assigned.add(c.id));
+    assigned.add(m.id);
+    units.push({
+      key: `mother-${m.id}`,
+      generation: m.generation_level,
+      father: null,
+      mothers: [m],
+      children: kids,
+      childrenGlobal: kids,
+      childrenByMother: [{ mother: m, motherIndex: 0, motherLabel: m.full_name, children: kids }],
+      location: m.current_location ?? kids[0]?.current_location ?? null,
+      memberIds: [m.id, ...kids.map((c) => c.id)],
+      motherLed: true,
     });
   }
 
@@ -88,8 +121,11 @@ export function buildFamilyUnits(members: Member[], wives: WifeLink[]): FamilyUn
       father: m.gender === "male" ? m : null,
       mothers: m.gender === "female" ? [m] : [],
       children: [],
+      childrenGlobal: [],
+      childrenByMother: [],
       location: m.current_location,
       memberIds: [m.id],
+      motherLed: m.gender === "female",
     });
   }
 

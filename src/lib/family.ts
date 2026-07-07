@@ -14,6 +14,8 @@ import {
   updateApprovedFamilyFn,
   updateFamilySubmissionFn,
   updateMemberAliveFn,
+  uploadMemberPhotoFn,
+  removeMemberPhotoFn,
   type PendingFamilySubmission,
   type SubmissionMemberIds,
 } from "@/lib/api/family.functions";
@@ -35,6 +37,7 @@ export type Member = {
   birth_order: number | null;
   death_year: number | null;
   current_location: string | null;
+  photo_url: string | null;
   submitted_by: string | null;
   submitter_phone: string | null;
   submitter_is_alive: boolean | null;
@@ -171,6 +174,14 @@ export async function deleteMember(id: number) {
 
 export async function updateMemberAlive(id: number, isAlive: boolean) {
   await updateMemberAliveFn({ data: { id, isAlive } });
+}
+
+export async function uploadMemberPhoto(memberId: number, fileBase64: string, mimeType: string) {
+  return uploadMemberPhotoFn({ data: { memberId, fileBase64, mimeType } });
+}
+
+export async function removeMemberPhoto(memberId: number) {
+  await removeMemberPhotoFn({ data: { memberId } });
 }
 
 export async function fetchAppSettings() {

@@ -23,7 +23,7 @@ function HomePage() {
     queryFn: () => fetchAllMembers(false),
   });
 
-  const me = members.find(m => m.full_name === user?.fullName);
+  const me = members.find((m) => (user?.memberId ? m.id === user.memberId : m.full_name === user?.fullName));
 
   return (
     <div>

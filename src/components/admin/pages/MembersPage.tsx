@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Skull, Trash2, UserCheck, Pencil } from "lucide-react";
 
 import { AddFamilyForm } from "@/components/AddFamilyForm";
+import { MemberPhotoUpload } from "@/components/MemberPhotoUpload";
+import { MemberAvatar } from "@/components/MemberAvatar";
 import { FamilyAnalyticsGrid } from "@/components/admin/FamilyAnalyticsGrid";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,13 +34,33 @@ import {
   type FamilySort,
   type FamilyUnit,
 } from "@/lib/admin-family-units";
-import { fetchWives } from "@/lib/family";
+import { fetchWives, type Member } from "@/lib/family";
 import type { AdminActions, AdminData } from "../types";
 
 type Props = {
   data: AdminData;
   actions: AdminActions;
 };
+
+function MemberPhotoDialog({ member, children }: { member: Member; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState(member);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{member.full_name}</DialogTitle>
+        </DialogHeader>
+        <MemberPhotoUpload
+          member={current}
+          onUpdated={(patch) => setCurrent((s) => ({ ...s, ...patch }))}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function EditFamilyDialog({
   unit,
@@ -162,6 +184,11 @@ function FamilyUnitCard({
         <div className="flex flex-wrap gap-1 border-t pt-2">
           {members.map((m) => (
             <div key={m!.id} className="flex items-center gap-0.5">
+              <MemberPhotoDialog member={m!}>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Photo">
+                  <MemberAvatar name={m!.full_name} photoUrl={m!.photo_url} size="xs" />
+                </Button>
+              </MemberPhotoDialog>
               {!m!.is_root && (
                 <Button
                   size="sm"

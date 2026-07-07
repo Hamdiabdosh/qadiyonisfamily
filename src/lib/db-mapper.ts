@@ -19,6 +19,7 @@ export function toMember(row: FamilyMemberRow): Member {
     birth_order: row.birthOrder,
     death_year: row.deathYear,
     current_location: row.currentLocation,
+    photo_url: row.photoUrl,
     submitted_by: row.submittedBy,
     submitter_phone: row.submitterPhone,
     submitter_is_alive: row.submitterIsAlive,

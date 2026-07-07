@@ -1,407 +1,200 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import ReactFlow, {
-  Background,
-  Controls,
-  MarkerType,
-  type Edge,
-  type Node,
-  type NodeProps,
-  type ReactFlowInstance,
-} from "reactflow";
-import "reactflow/dist/style.css";
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Home as HomeIcon, Eye, EyeOff, X, Maximize2, User, Users, GitBranch } from "lucide-react";
+import { GitBranch, LayoutGrid, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/AppHeader";
 import { PageTitleRow } from "@/components/PageTitleRow";
+import { TreeFocusView } from "@/components/tree/TreeFocusView";
+import { TreeGraphView } from "@/components/tree/TreeGraphView";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
-
-import { fetchAllMembers, fetchWives, statusOf, statusClass, type Member } from "@/lib/family";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchAllMembers, fetchWives, type Member } from "@/lib/family";
 import { buildMap, fatherChain, motherChain, chainReachesRoot } from "@/lib/lineage";
-import { computeFamilyTreeLayout } from "@/lib/tree-layout";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { MemberAvatar } from "@/components/MemberAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { disambiguatorLabel } from "@/lib/member-disambiguator";
 
-export const Route = createFileRoute("/_app/tree")({ ssr: false, component: TreePage });
+const VIEW_MODE_KEY = "tree-view-mode";
+const SHOW_OUT_KEY = "tree-show-out";
+type TreeViewMode = "focus" | "graph";
 
-type MemberNodeData = {
-  name: string;
-  generation: number;
-  status: keyof typeof statusClass;
-  highlight: boolean;
-  dimmed: boolean;
-  selected: boolean;
-  motherLabel?: string;
-};
-
-const LEGEND_ITEMS: { status: keyof typeof statusClass; labelKey: string }[] = [
-  { status: "root", labelKey: "rootPerson" },
-  { status: "kinAlive", labelKey: "kin" },
-  { status: "kinDead", labelKey: "dead" },
-  { status: "outAlive", labelKey: "outOfKin" },
-];
-
-const MemberNode = memo(function MemberNode({ data }: NodeProps<MemberNodeData>) {
-  const { t } = useI18n();
-  return (
-    <div
-      className={`min-w-[120px] cursor-pointer rounded-xl border px-2 py-1.5 text-center text-xs font-medium shadow-md transition-all duration-200 hover:scale-105 hover:shadow-lg ${statusClass[data.status]} ${data.dimmed ? "opacity-25 saturate-50" : ""} ${data.highlight ? "ring-4 ring-primary shadow-[0_0_20px_var(--glow-primary)]" : ""} ${data.selected ? "ring-4 ring-foreground/40" : ""}`}
-    >
-      <div className="truncate">{data.name}</div>
-      {data.motherLabel ? (
-        <div className="truncate text-[9px] font-normal opacity-75">
-          {t("childOfMother")} {data.motherLabel}
-        </div>
-      ) : null}
-      <div className="text-[10px] opacity-80">
-        {t("gen")} {data.generation}
-      </div>
-    </div>
-  );
+export const Route = createFileRoute("/_app/tree")({
+  ssr: false,
+  validateSearch: z.object({ focus: z.coerce.number().optional() }),
+  component: TreePage,
 });
-
-const nodeTypes = { member: MemberNode };
-
-function TreeLegend() {
-  const { t } = useI18n();
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-      {LEGEND_ITEMS.map(({ status, labelKey }) => (
-        <span key={status} className="inline-flex items-center gap-1">
-          <span className={`size-2.5 rounded-full border ${statusClass[status]}`} />
-          {t(labelKey)}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 function TreePage() {
   const { t } = useI18n();
   const { user } = useAuth();
-  const { data: members = [], isLoading } = useQuery({
+  const navigate = Route.useNavigate();
+  const { focus } = Route.useSearch();
+  const { data: members = [] } = useQuery({
     queryKey: ["members", "approved"],
     queryFn: () => fetchAllMembers(false),
   });
   const { data: wives = [] } = useQuery({ queryKey: ["wives"], queryFn: fetchWives });
   const byId = useMemo(() => buildMap(members), [members]);
-  const flowRef = useRef<ReactFlowInstance | null>(null);
 
-  const [showOut, setShowOut] = useState(true);
-  const [query, setQuery] = useState("");
+  const me = useMemo(
+    () => members.find((m) => (user?.memberId ? m.id === user.memberId : m.full_name === user?.fullName)),
+    [members, user?.memberId, user?.fullName],
+  );
+
+  const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Member | null>(null);
   const [lineageOf, setLineageOf] = useState<Member | null>(null);
-
-  const root = useMemo(() => members.find((m) => m.is_root), [members]);
-  const me = useMemo(
-    () => members.find((m) => m.full_name === user?.fullName),
-    [members, user?.fullName],
-  );
-
-  const filtered = useMemo(() => members.filter((m) => showOut || m.is_in_kin), [members, showOut]);
-  const stats = useMemo(
-    () => ({
-      total: members.length,
-      kin: members.filter((m) => m.is_in_kin).length,
-    }),
-    [members],
-  );
-
-  const trimmedQuery = query.trim();
-  const hasQuery = trimmedQuery.length > 0;
-
-  const matchIds = useMemo(() => {
-    const q = trimmedQuery.toLowerCase();
-    if (!q) return new Set<number>();
-    return new Set(filtered.filter((m) => m.full_name.toLowerCase().includes(q)).map((m) => m.id));
-  }, [filtered, trimmedQuery]);
-
-  const firstMatchId = useMemo(() => {
-    if (matchIds.size === 0) return null;
-    return filtered.find((m) => matchIds.has(m.id))?.id ?? null;
-  }, [filtered, matchIds]);
-
-  const layout = useMemo(
-    () => computeFamilyTreeLayout(filtered, wives),
-    [filtered, wives],
-  );
-
-  const fathersWithMultipleWives = useMemo(() => {
-    const count = new Map<number, number>();
-    for (const w of wives) {
-      count.set(w.husband_id, (count.get(w.husband_id) ?? 0) + 1);
+  const [viewMode, setViewMode] = useState<TreeViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      return stored === "graph" ? "graph" : "focus";
+    } catch {
+      return "focus";
     }
-    return new Set([...count.entries()].filter(([, n]) => n > 1).map(([id]) => id));
-  }, [wives]);
-
-  const flowNodes = useMemo(() => {
-    const ns: Node<MemberNodeData>[] = [];
-    for (const m of filtered) {
-      const pos = layout.positions.get(m.id);
-      if (!pos) continue;
-      const motherLabel =
-        m.father_id &&
-        m.mother_id &&
-        fathersWithMultipleWives.has(m.father_id)
-          ? byId.get(m.mother_id)?.full_name
-          : undefined;
-      ns.push({
-        id: String(m.id),
-        type: "member",
-        position: pos,
-        data: {
-          name: m.full_name,
-          generation: m.generation_level,
-          status: statusOf(m),
-          highlight: matchIds.has(m.id),
-          dimmed: hasQuery && !matchIds.has(m.id),
-          selected: selected?.id === m.id,
-          motherLabel,
-        },
-        style: { padding: 0, border: "none", background: "transparent" },
-      });
+  });
+  const [showOut, setShowOut] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_OUT_KEY) === "1";
+    } catch {
+      return false;
     }
-    return ns;
-  }, [filtered, layout, matchIds, hasQuery, selected, byId, fathersWithMultipleWives]);
-
-  const flowEdges = useMemo(() => {
-    const memberIds = new Set(filtered.map((m) => m.id));
-    const es: Edge[] = [];
-    const dimEdges = hasQuery && matchIds.size > 0;
-
-    for (const w of wives) {
-      if (!memberIds.has(w.husband_id) || !memberIds.has(w.wife_id)) continue;
-      es.push({
-        id: `marriage-${w.husband_id}-${w.wife_id}`,
-        source: String(w.husband_id),
-        target: String(w.wife_id),
-        type: "straight",
-        style: { stroke: "var(--color-primary)", strokeWidth: 1.5, opacity: dimEdges ? 0.15 : 0.45 },
-      });
-    }
-
-    filtered.forEach((m) => {
-      if (m.father_id && memberIds.has(m.father_id)) {
-        es.push({
-          id: `f-${m.father_id}-${m.id}`,
-          source: String(m.father_id),
-          target: String(m.id),
-          type: "smoothstep",
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: { stroke: "var(--color-kin-alive)", strokeWidth: 1.5, opacity: dimEdges && !matchIds.has(m.id) && !matchIds.has(m.father_id) ? 0.2 : 1 },
-        });
-      }
-      if (m.mother_id && memberIds.has(m.mother_id)) {
-        es.push({
-          id: `m-${m.mother_id}-${m.id}`,
-          source: String(m.mother_id),
-          target: String(m.id),
-          type: "smoothstep",
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: { stroke: "var(--color-out-alive)", strokeWidth: 1.5, strokeDasharray: "5 3", opacity: dimEdges && !matchIds.has(m.id) && !matchIds.has(m.mother_id) ? 0.2 : 1 },
-        });
-      }
-    });
-    return es;
-  }, [filtered, wives, hasQuery, matchIds]);
-
-  const focusNode = useCallback((id: number | null) => {
-    const inst = flowRef.current;
-    if (!inst || id == null) return;
-    void inst.fitView({ nodes: [{ id: String(id) }], padding: 0.9, duration: 350, maxZoom: 1.2 });
-  }, []);
-
-  const fitAll = useCallback(() => {
-    void flowRef.current?.fitView({ padding: 0.15, duration: 250 });
-  }, []);
-
-  const onInit = useCallback((instance: ReactFlowInstance) => {
-    flowRef.current = instance;
-    void instance.fitView({ padding: 0.15, duration: 200 });
-  }, []);
+  });
 
   useEffect(() => {
-    if (!hasQuery) return;
-    focusNode(firstMatchId);
-  }, [hasQuery, firstMatchId, focusNode]);
+    localStorage.setItem(VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
 
-  const onNodeClick = useCallback(
-    (_e: MouseEvent, n: Node<MemberNodeData>) => {
-      const m = members.find((x) => String(x.id) === n.id);
-      if (m) setSelected(m);
-    },
-    [members],
+  useEffect(() => {
+    localStorage.setItem(SHOW_OUT_KEY, showOut ? "1" : "0");
+  }, [showOut]);
+
+  const root = members.find((m) => m.is_root) ?? null;
+  const focusId = focus ?? me?.id ?? root?.id ?? null;
+
+  const setFocus = (id: number) => {
+    void navigate({ search: (prev) => ({ ...prev, focus: id }) });
+  };
+  const displayMembers = useMemo(
+    () => (showOut ? members : members.filter((m) => m.is_in_kin)),
+    [members, showOut],
   );
 
-  const goToRoot = useCallback(() => {
-    if (root) {
-      setQuery(root.full_name);
-      focusNode(root.id);
-    }
-  }, [root, focusNode]);
-
-  const goToMe = useCallback(() => {
-    if (me) {
-      setQuery(me.full_name);
-      focusNode(me.id);
-    }
-  }, [me, focusNode]);
+  const results = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return [];
+    return displayMembers.filter((m) => m.full_name.toLowerCase().includes(term)).slice(0, 12);
+  }, [displayMembers, q]);
 
   return (
     <div>
       <AppHeader />
       <div className="page-content space-y-4 px-4 pb-4 pt-2">
-        <PageTitleRow title={t("tree")} description={t("treeDescription")} />
+        <PageTitleRow
+          title={t("tree")}
+          description={viewMode === "graph" ? t("treeDescriptionGraph") : t("treeDescriptionFocus")}
+        />
 
-        <div className="flex gap-3 text-sm">
-          <div className="bg-card flex-1 rounded-xl border px-4 py-2.5 text-center">
-            <p className="font-semibold text-primary">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">{t("totalMembers")}</p>
-          </div>
-          <div className="bg-card flex-1 rounded-xl border px-4 py-2.5 text-center">
-            <p className="font-semibold text-emerald-600">{stats.kin}</p>
-            <p className="text-xs text-muted-foreground">{t("kin")}</p>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("treeSearchPlaceholder")}
-              className="py-6 pl-10 pr-10 text-base"
-            />
-            {hasQuery ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label={t("search")}
-              >
-                <X className="size-4" />
-              </button>
-            ) : null}
-          </div>
-
-          {hasQuery ? (
-            <p className="text-xs text-muted-foreground">
-              {matchIds.size > 0
-                ? `${matchIds.size} ${t("treeResults")}`
-                : t("noResults")}
-            </p>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as TreeViewMode)}>
+            <TabsList>
+              <TabsTrigger value="focus" className="gap-1.5">
+                <LayoutGrid className="size-3.5" />
+                {t("treeViewFocus")}
+              </TabsTrigger>
+              <TabsTrigger value="graph" className="gap-1.5">
+                <GitBranch className="size-3.5" />
+                {t("treeViewGraph")}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="flex flex-wrap gap-1.5 sm:ml-auto">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowOut((v) => !v)}>
+              {showOut ? t("hideOutOfKin") : t("showOutOfKin")}
+            </Button>
             {root ? (
-              <Button variant="outline" size="sm" onClick={goToRoot} title={t("goToRoot")}>
-                <HomeIcon className="size-4 sm:mr-1.5" />
-                <span className="hidden sm:inline">{t("goToRoot")}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setFocus(root.id)}>
+                {t("goToRoot")}
               </Button>
             ) : null}
             {me ? (
-              <Button variant="outline" size="sm" onClick={goToMe} title={t("focusOnMe")}>
-                <User className="size-4 sm:mr-1.5" />
-                <span className="hidden sm:inline">{t("focusOnMe")}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setFocus(me.id)}>
+                {t("focusOnMe")}
               </Button>
             ) : null}
-            <Button variant="outline" size="sm" onClick={fitAll} title={t("fitTree")}>
-              <Maximize2 className="size-4 sm:mr-1.5" />
-              <span className="hidden sm:inline">{t("fitTree")}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowOut((v) => !v)}
-              title={showOut ? t("hideOutOfKin") : t("showOutOfKin")}
-            >
-              {showOut ? <Eye className="size-4 sm:mr-1.5" /> : <EyeOff className="size-4 sm:mr-1.5" />}
-              <span className="hidden sm:inline">{showOut ? t("hideOutOfKin") : t("showOutOfKin")}</span>
-            </Button>
           </div>
-
-          <TreeLegend />
         </div>
 
-        <div className="tree-canvas relative h-[58vh] min-h-[300px]">
-          {isLoading ? (
-            <div className="flex h-full flex-col gap-3 p-4">
-              <Skeleton className="h-4 w-1/3" />
-              <Skeleton className="flex-1 rounded-lg" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-              {t("noResults")}
-            </div>
-          ) : (
-            <>
-              <ReactFlow
-                nodes={flowNodes}
-                edges={flowEdges}
-                nodeTypes={nodeTypes}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                elementsSelectable
-                onInit={onInit}
-                onNodeClick={onNodeClick}
-                minZoom={0.12}
-                maxZoom={2}
-                proOptions={{ hideAttribution: true }}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("treeSearchPlaceholder")}
+            className="pl-10"
+          />
+        </div>
+
+        {results.length > 0 ? (
+          <div className="space-y-2 rounded-lg border p-2">
+            {results.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                onClick={() => {
+                  setSelected(m);
+                  setFocus(m.id);
+                }}
               >
-                <Background gap={24} />
-                <Controls showInteractive={false} className="!shadow-md" />
-              </ReactFlow>
-              {hasQuery && matchIds.size === 0 ? (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/60 p-6 text-center text-sm text-muted-foreground backdrop-blur-[1px]">
-                  {t("noResults")}
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
+                <MemberAvatar name={m.full_name} photoUrl={m.photo_url} size="sm" />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{m.full_name}</span>
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    {disambiguatorLabel(m, byId)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Button asChild variant="outline">
-            <Link to="/kin">
-              <Users className="mr-2 size-4" />
-              {t("kinDirectory")}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/home">
-              <HomeIcon className="mr-2 size-4" />
-              {t("home")}
-            </Link>
-          </Button>
-        </div>
+        {viewMode === "focus" ? (
+          <TreeFocusView members={displayMembers} wives={wives} focusedId={focusId} onFocusChange={setFocus} />
+        ) : (
+          <TreeGraphView
+            members={displayMembers}
+            wives={wives}
+            showOut={showOut}
+            highlightId={focusId}
+            searchQuery={q}
+            onNodeClick={(m) => {
+              setFocus(m.id);
+              setSelected(m);
+            }}
+          />
+        )}
 
-        <Dialog open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
+        <Dialog open={!!selected} onOpenChange={(o) => (!o ? setSelected(null) : null)}>
           <DialogContent className="max-w-sm">
-            {selected && (
+            {selected ? (
               <>
-                <DialogHeader>
+                <DialogHeader className="items-center text-center">
+                  <MemberAvatar name={selected.full_name} photoUrl={selected.photo_url} size="xl" />
                   <DialogTitle>{selected.full_name}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 text-sm">
-                  <StatusBadge m={selected} />
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-                    <dt className="text-muted-foreground">{t("generation")}</dt>
-                    <dd>{selected.generation_level}</dd>
-                    <dt className="text-muted-foreground">{t("location")}</dt>
-                    <dd>{selected.current_location || "—"}</dd>
-                    <dt className="text-muted-foreground">{t("father")}</dt>
-                    <dd>{selected.father_id ? (byId.get(selected.father_id)?.full_name ?? "—") : "—"}</dd>
-                    <dt className="text-muted-foreground">{t("mother")}</dt>
-                    <dd>{selected.mother_id ? (byId.get(selected.mother_id)?.full_name ?? "—") : "—"}</dd>
-                  </dl>
-                  {!selected.is_root && (
+                  <div className="flex justify-center">
+                    <StatusBadge m={selected} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{disambiguatorLabel(selected, byId)}</p>
+                  {!selected.is_root ? (
                     <Button
                       className="w-full"
                       variant="outline"
@@ -410,13 +203,12 @@ function TreePage() {
                         setSelected(null);
                       }}
                     >
-                      <GitBranch className="mr-2 size-4" />
                       {t("viewLineage")}
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               </>
-            )}
+            ) : null}
           </DialogContent>
         </Dialog>
 

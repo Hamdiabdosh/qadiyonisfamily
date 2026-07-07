@@ -3,8 +3,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { Moon, Sun, Bell, Phone, LogOut, Shield, ChevronRight, Send } from "lucide-react";
+import { toast } from "sonner";
 
 import { AppHeader } from "@/components/AppHeader";
+import { MemberPhotoUpload } from "@/components/MemberPhotoUpload";
 import { SponsorAppDialog } from "@/components/SponsorAppDialog";
 import { PageTitleRow } from "@/components/PageTitleRow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +17,7 @@ import { useI18n, type Lang } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
 import { useAuth } from "@/lib/auth";
 import { getPublicSettingsFn } from "@/lib/api/content.functions";
+import { fetchAllMembers } from "@/lib/family";
 import { DEFAULT_CONTACT_ADMINS, telegramUrl, type ContactAdmin } from "@/lib/contact-admins";
 
 export const Route = createFileRoute("/_app/profile")({
@@ -80,8 +83,19 @@ function ProfilePage() {
     if (openSponsor) setSponsorOpen(true);
   }, [openSponsor]);
   const { dark, toggleDark, notifications, setNotifications } = useSettings();
-  const { user, isAdmin, loading, signOut } = useAuth();
+  const { user, isAdmin, loading, signOut, linkMember } = useAuth();
   const { data: settings } = useQuery({ queryKey: ["public-settings"], queryFn: getPublicSettingsFn });
+  const { data: members = [] } = useQuery({
+    queryKey: ["members", "approved"],
+    queryFn: () => fetchAllMembers(false),
+    enabled: !!user,
+  });
+
+  const me = members.find((m) => (user?.memberId ? m.id === user.memberId : m.full_name === user?.fullName));
+  const [myMember, setMyMember] = useState(me);
+  useEffect(() => {
+    setMyMember(me);
+  }, [me]);
 
   const contactAdmins = settings?.contact_admins ?? DEFAULT_CONTACT_ADMINS;
 
@@ -100,12 +114,41 @@ function ProfilePage() {
             {loading ? (
               <p className="text-muted-foreground">{t("loading")}</p>
             ) : user ? (
-              <div className="space-y-1">
-                {isAdmin ? (
-                  <p className="text-xs font-medium uppercase tracking-wide text-primary">{t("admin")}</p>
+              <div className="space-y-4">
+                {myMember ? (
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <p className="mb-3 text-center text-sm font-medium">{t("familyPhoto")}</p>
+                    <MemberPhotoUpload
+                      member={myMember}
+                      onUpdated={(patch) => setMyMember((s) => (s ? { ...s, ...patch } : s))}
+                    />
+                    <p className="mt-3 text-center text-xs text-muted-foreground">{t("familyPhotoHint")}</p>
+                  </div>
                 ) : null}
-                <p className="font-semibold">{profileName}</p>
-                <p className="text-muted-foreground">{profileContact}</p>
+                {!user.memberId && me ? (
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                    <p className="text-xs text-muted-foreground">{t("profileLinkHint")}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-2"
+                      onClick={async () => {
+                        const result = await linkMember(me.id);
+                        if (result.error) toast.error(result.error);
+                        else toast.success(t("profileLinked"));
+                      }}
+                    >
+                      {t("linkMyProfile")}
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  {isAdmin ? (
+                    <p className="text-xs font-medium uppercase tracking-wide text-primary">{t("admin")}</p>
+                  ) : null}
+                  <p className="font-semibold">{profileName}</p>
+                  <p className="text-muted-foreground">{profileContact}</p>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">

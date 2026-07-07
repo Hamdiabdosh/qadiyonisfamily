@@ -3,15 +3,16 @@ import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb } from "@/db/index.server";
-import { notifications, userRoles, users } from "@/db/schema";
+import { familyMembers, notifications, userRoles, users } from "@/db/schema";
 import { hashPassword, signToken, verifyPassword, TOKEN_COOKIE } from "@/lib/auth.server";
-import { optionalAuth, requireAdmin } from "@/lib/auth-middleware.server";
+import { optionalAuth, requireAdmin, requireAuth } from "@/lib/auth-middleware.server";
 
 export type AuthUser = {
   id: string;
   email: string | null;
   phone: string | null;
   fullName: string | null;
+  memberId: number | null;
 };
 
 function toAuthUser(user: typeof users.$inferSelect): AuthUser {
@@ -20,6 +21,7 @@ function toAuthUser(user: typeof users.$inferSelect): AuthUser {
     email: user.email,
     phone: user.phone,
     fullName: user.fullName,
+    memberId: user.memberId,
   };
 }
 
@@ -186,6 +188,38 @@ export const rejectAccountFn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const linkMyMemberFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ memberId: z.number().optional() }).optional())
+  .middleware([requireAuth])
+  .handler(async ({ context, data }) => {
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, context.userId)).limit(1);
+    if (!user) throw new Error("User not found");
+
+    const targetMemberId = data?.memberId;
+    if (targetMemberId != null) {
+      const [member] = await db
+        .select({ id: familyMembers.id, fullName: familyMembers.fullName })
+        .from(familyMembers)
+        .where(eq(familyMembers.id, targetMemberId))
+        .limit(1);
+      if (!member) throw new Error("Member not found");
+      await db.update(users).set({ memberId: member.id }).where(eq(users.id, user.id));
+      return { ok: true, linkedMemberId: member.id };
+    }
+
+    if (!user.fullName?.trim()) throw new Error("Set your full name first.");
+    const matches = await db
+      .select({ id: familyMembers.id })
+      .from(familyMembers)
+      .where(eq(familyMembers.fullName, user.fullName.trim()));
+    if (matches.length !== 1) {
+      throw new Error("Could not auto-link profile — ask admin to link your account.");
+    }
+    await db.update(users).set({ memberId: matches[0].id }).where(eq(users.id, user.id));
+    return { ok: true, linkedMemberId: matches[0].id };
+  });
+
 export const setUserRoleFn = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
@@ -217,6 +251,28 @@ export const setUserRoleFn = createServerFn({ method: "POST" })
     await db.delete(userRoles).where(eq(userRoles.userId, data.userId));
     await db.insert(userRoles).values({ userId: data.userId, role: data.role });
 
+    return { ok: true };
+  });
+
+export const setUserMemberFn = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      userId: z.string().uuid(),
+      memberId: z.number().nullable(),
+    }),
+  )
+  .middleware([requireAdmin])
+  .handler(async ({ data }) => {
+    const db = getDb();
+    if (data.memberId != null) {
+      const [member] = await db
+        .select({ id: familyMembers.id })
+        .from(familyMembers)
+        .where(eq(familyMembers.id, data.memberId))
+        .limit(1);
+      if (!member) throw new Error("Member not found");
+    }
+    await db.update(users).set({ memberId: data.memberId }).where(eq(users.id, data.userId));
     return { ok: true };
   });
 

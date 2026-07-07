@@ -15,6 +15,9 @@ import { buildMap, shortestRelation } from "@/lib/lineage";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { StatusBadge } from "@/components/StatusBadge";
+import { MemberAvatar } from "@/components/MemberAvatar";
+import { MemberPhotoUpload } from "@/components/MemberPhotoUpload";
+import { statusOf } from "@/lib/family";
 import { LineageDialog } from "./_app.tree";
 
 export const Route = createFileRoute("/_app/kin")({
@@ -36,7 +39,7 @@ function KinPage() {
   const [lineageOf, setLineageOf] = useState<Member | null>(null);
   const [relateTo, setRelateTo] = useState<Member | null>(null);
 
-  const me = members.find(m => m.full_name === user?.fullName);
+  const me = members.find((m) => (user?.memberId ? m.id === user.memberId : m.full_name === user?.fullName));
 
   const filtered = useMemo(() => {
     const term = q.toLowerCase().trim();
@@ -96,8 +99,14 @@ function KinPage() {
                 className="cursor-pointer"
                 onClick={() => setSelected(member)}
               >
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <MemberAvatar
+                    name={member.full_name}
+                    photoUrl={member.photo_url}
+                    status={statusOf(member)}
+                    size="md"
+                  />
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate">{member.full_name}</p>
                     <p className="text-sm text-muted-foreground">
                       Gen {member.generation_level} • {member.current_location || "Unknown"}
@@ -130,17 +139,34 @@ function KinPage() {
         <DialogContent className="max-w-sm">
           {selected && (
             <>
-              <DialogHeader>
+              <DialogHeader className="items-center text-center">
+                <MemberAvatar
+                  name={selected.full_name}
+                  photoUrl={selected.photo_url}
+                  status={statusOf(selected)}
+                  size="xl"
+                  className="mb-2 border-4 border-background shadow-md"
+                />
                 <DialogTitle>{selected.full_name}</DialogTitle>
               </DialogHeader>
               <div className="space-y-3 text-sm">
-                <StatusBadge m={selected} />
+                <div className="flex justify-center">
+                  <StatusBadge m={selected} />
+                </div>
                 <p><span className="text-muted-foreground">Generation:</span> {selected.generation_level}</p>
                 <p><span className="text-muted-foreground">Location:</span> {selected.current_location || "—"}</p>
                 <p><span className="text-muted-foreground">Father:</span> {byId.get(selected.father_id || 0)?.full_name || "—"}</p>
                 <p><span className="text-muted-foreground">Mother:</span> {byId.get(selected.mother_id || 0)?.full_name || "—"}</p>
 
-                <div className="flex gap-2 pt-4">
+                {me?.id === selected.id && user ? (
+                  <MemberPhotoUpload
+                    member={selected}
+                    size="lg"
+                    onUpdated={(patch) => setSelected((s) => (s ? { ...s, ...patch } : null))}
+                  />
+                ) : null}
+
+                <div className="flex gap-2 pt-2">
                   <Button
                     variant="outline"
                     className="flex-1"
