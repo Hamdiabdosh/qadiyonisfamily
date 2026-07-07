@@ -74,13 +74,13 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
     await runStatement(
       sql,
       "admin email domain",
-      `UPDATE users SET email = 'admin@qadiyonis.space' WHERE email = 'admin@qadiyonis.site'`,
+      `UPDATE users SET email = 'admin@qadiyonis.raafat.site' WHERE email IN ('admin@qadiyonis.site', 'admin@qadiyonis.space')`,
     );
     await runStatement(
       sql,
       "admin profile",
       `UPDATE users SET account_status = 'approved', full_name = COALESCE(full_name, 'Admin')
-       WHERE email = 'admin@qadiyonis.space'`,
+       WHERE email = 'admin@qadiyonis.raafat.site'`,
     );
   }
 
@@ -88,8 +88,8 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
     await runStatement(
       sql,
       "admin_email setting",
-      `UPDATE app_settings SET value = 'admin@qadiyonis.space'
-       WHERE key = 'admin_email' AND value = 'admin@qadiyonis.site'`,
+      `UPDATE app_settings SET value = 'admin@qadiyonis.raafat.site'
+       WHERE key = 'admin_email' AND value IN ('admin@qadiyonis.site', 'admin@qadiyonis.space')`,
     );
   }
 

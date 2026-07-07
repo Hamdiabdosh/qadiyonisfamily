@@ -11,7 +11,7 @@ import { appSettings, userRoles, users } from "../src/db/schema";
 import { hashPassword } from "../src/lib/auth.server";
 import { ensureDatabaseUrl, requireEnv } from "./database-url";
 
-export const ADMIN_EMAIL = "admin@qadiyonis.space";
+export const ADMIN_EMAIL = "admin@qadiyonis.raafat.site";
 export const ADMIN_PHONE = "0931947040";
 export const ADMIN_PASSWORD = "12341235";
 export const ADMIN_NAME = "Abdulhamid Teweleda Abdosh";

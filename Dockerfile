@@ -8,7 +8,7 @@ RUN bun install --frozen-lockfile
 
 COPY . .
 
-ARG VITE_APP_URL=https://qadiyonis.space
+ARG VITE_APP_URL=https://qadiyonis.raafat.site
 ENV VITE_APP_URL=$VITE_APP_URL
 
 RUN bun run build

@@ -14,6 +14,7 @@ import { AuthProvider } from "@/lib/auth";
 import { PwaInstallProvider } from "@/lib/pwa-install";
 import { InstallAppDialog } from "@/components/InstallAppDialog";
 import { LanguageOnboardingDialog } from "@/components/LanguageOnboardingDialog";
+import { APP_URL } from "@/lib/app-url";
 
 function NotFoundComponent() {
   return (
@@ -70,16 +71,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content: "Family lineage of Qadi Yonis — preserve, search, and connect with your kin.",
       },
       { property: "og:type", content: "website" },
-      { property: "og:url", content: "https://qadiyonis.space" },
+      { property: "og:url", content: APP_URL },
       { property: "og:locale", content: "en_US" },
-      { property: "og:image", content: "https://qadiyonis.space/icon-512.png" },
+      { property: "og:image", content: `${APP_URL}/icon-512.png` },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Qadi Yonis — Family Tree" },
       {
         name: "twitter:description",
         content: "Preserve and explore the Qadi Yonis family lineage.",
       },
-      { name: "twitter:image", content: "https://qadiyonis.space/icon-512.png" },
+      { name: "twitter:image", content: `${APP_URL}/icon-512.png` },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -87,7 +88,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/icon.svg", type: "image/svg+xml" },
       { rel: "apple-touch-icon", href: "/icon-192.png", sizes: "192x192" },
       { rel: "apple-touch-icon", href: "/icon-512.png", sizes: "512x512" },
-      { rel: "canonical", href: "https://qadiyonis.space/" },
+      { rel: "canonical", href: `${APP_URL}/` },
     ],
     scripts: [
       {
@@ -96,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "@context": "https://schema.org",
           "@type": "WebApplication",
           name: "Qadi Yonis Family Tree",
-          url: "https://qadiyonis.space",
+          url: APP_URL,
           description: "Family lineage app for the Qadi Yonis kin network.",
           applicationCategory: "SocialNetworkingApplication",
           operatingSystem: "Web",

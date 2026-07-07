@@ -88,7 +88,7 @@ async function seedLineage() {
   await db
     .insert(appSettings)
     .values([
-      { key: "admin_email", value: "admin@qadiyonis.space" },
+      { key: "admin_email", value: "admin@qadiyonis.raafat.site" },
       {
         key: "contact_admins",
         value:
