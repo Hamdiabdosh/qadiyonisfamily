@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 
+import { resolveDatabaseUrl } from "@/lib/database-url.server";
 import * as schema from "./schema";
 
 const require = createRequire(import.meta.url);
@@ -12,8 +13,7 @@ let db: Db | undefined;
 
 export function getDb(): Db {
   if (!db) {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("DATABASE_URL is not set");
+    const url = resolveDatabaseUrl();
     const postgres = require("postgres") as typeof import("postgres").default;
     const { drizzle } = require("drizzle-orm/postgres-js") as typeof import("drizzle-orm/postgres-js");
     client = postgres(url, { max: 10 });
