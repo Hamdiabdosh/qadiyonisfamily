@@ -32,7 +32,7 @@ export function AppHeader() {
   return (
     <header className="header-glass sticky top-0 z-40 flex h-14 items-center justify-between border-b px-4">
       <div className="flex min-w-0 items-center gap-2.5">
-        <img src="/icon.svg" alt="" className="logo-glow size-9 shrink-0 rounded-xl" />
+        <img src="/icon.svg" alt="" className="logo-glow size-9 shrink-0 rounded-xl object-cover" />
         <div className="min-w-0">
           <h1 className="truncate text-base font-bold tracking-tight">{t("appName")}</h1>
           <p className="truncate text-xs text-muted-foreground">{t("tagline")}</p>

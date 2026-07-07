@@ -32,7 +32,7 @@ export function InstallAppDialog() {
       <DialogContent className="max-w-sm gap-0 overflow-hidden rounded-2xl border-primary/20 p-0 sm:max-w-md">
         <div className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent px-6 pb-4 pt-6 text-center">
           <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-background shadow-lg shadow-primary/20 ring-1 ring-primary/20">
-            <img src="/icon.svg" alt="" className="size-10 rounded-xl" />
+            <img src="/icon.svg" alt="" className="size-10 rounded-xl object-cover" />
           </div>
           <DialogHeader className="space-y-2 text-center">
             <DialogTitle className="text-lg font-bold leading-snug">{t("installAppTitle")}</DialogTitle>
