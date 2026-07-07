@@ -34,24 +34,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u);
         setIsAdmin(admin);
       })
+      .catch(() => {
+        // ponytail: dev server down or offline — treat as signed out
+      })
       .finally(() => setLoading(false));
   }, []);
 
   const signIn = async (identifier: string, password: string) => {
-    const result = await loginFn({ data: { identifier, password } });
-    if (result.error || !result.token || !result.user) {
-      return { error: result.error ?? "Invalid credentials" };
+    try {
+      const result = await loginFn({ data: { identifier, password } });
+      if (result.error || !result.token || !result.user) {
+        return { error: result.error ?? "Invalid credentials" };
+      }
+      localStorage.setItem(TOKEN_COOKIE, result.token);
+      setUser(result.user);
+      setIsAdmin(result.isAdmin);
+      return { error: null };
+    } catch {
+      return { error: "Could not reach the server. Check that the app is running and try again." };
     }
-    localStorage.setItem(TOKEN_COOKIE, result.token);
-    setUser(result.user);
-    setIsAdmin(result.isAdmin);
-    return { error: null };
   };
 
   const register = async (fullName: string, phone: string, password: string) => {
-    const result = await registerFn({ data: { fullName, phone, password } });
-    if (!result.ok) return { error: result.error ?? "Registration failed" };
-    return { error: null };
+    try {
+      const result = await registerFn({ data: { fullName, phone, password } });
+      if (!result.ok) return { error: result.error ?? "Registration failed" };
+      return { error: null };
+    } catch {
+      return { error: "Could not reach the server. Check that the app is running and try again." };
+    }
   };
 
   const signOut = async () => {

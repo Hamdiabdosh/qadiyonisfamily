@@ -1,19 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
-import { desc, eq, or } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb } from "@/db/index.server";
 import { notifications, userRoles, users } from "@/db/schema";
-import {
-  getBearerToken,
-  hashPassword,
-  signToken,
-  verifyPassword,
-  verifyToken,
-  TOKEN_COOKIE,
-} from "@/lib/auth.server";
-import { requireAdmin } from "@/lib/auth-middleware.server";
+import { hashPassword, signToken, verifyPassword, TOKEN_COOKIE } from "@/lib/auth.server";
+import { optionalAuth, requireAdmin } from "@/lib/auth-middleware.server";
 
 export type AuthUser = {
   id: string;
@@ -117,22 +109,20 @@ export const loginFn = createServerFn({ method: "POST" })
     };
   });
 
-export const getSessionFn = createServerFn({ method: "GET" }).handler(async () => {
-  const token = getBearerToken(getRequest());
-  if (!token) return { user: null, isAdmin: false };
+export const getSessionFn = createServerFn({ method: "GET" })
+  .middleware([optionalAuth])
+  .handler(async ({ context }) => {
+    if (!context.userId) return { user: null, isAdmin: false };
 
-  const payload = await verifyToken(token);
-  if (!payload) return { user: null, isAdmin: false };
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, context.userId)).limit(1);
+    if (!user || user.accountStatus !== "approved") return { user: null, isAdmin: false };
 
-  const db = getDb();
-  const [user] = await db.select().from(users).where(eq(users.id, payload.sub)).limit(1);
-  if (!user || user.accountStatus !== "approved") return { user: null, isAdmin: false };
-
-  return {
-    user: toAuthUser(user),
-    isAdmin: payload.role === "admin",
-  };
-});
+    return {
+      user: toAuthUser(user),
+      isAdmin: context.isAdmin,
+    };
+  });
 
 export type AdminAccountRow = {
   id: string;
