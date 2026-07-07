@@ -34,6 +34,7 @@ COPY --from=builder /app/.output ./.output
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/src/db ./src/db
 COPY --from=builder /app/src/lib/auth.server.ts ./src/lib/auth.server.ts
+COPY --from=builder /app/src/lib/database-url.server.ts ./src/lib/database-url.server.ts
 COPY --from=builder /app/src/lib/lineage-compute.server.ts ./src/lib/lineage-compute.server.ts
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=builder /app/scripts ./scripts
