@@ -9,18 +9,32 @@ export type DuplicateNameHit = {
   otherPending: { submissionId: string; submitter: string }[];
 };
 
-function normalizeName(name: string) {
+export function normalizeSubmitName(name: string) {
   return name.trim().toLowerCase();
 }
 
-export function namesFromSubmissionForm(form: SubmitFamilyPayload): { name: string; role: DuplicateNameHit["role"] }[] {
-  const out: { name: string; role: DuplicateNameHit["role"] }[] = [];
-  if (form.father.name.trim()) out.push({ name: form.father.name.trim(), role: "father" });
+function normalizeName(name: string) {
+  return normalizeSubmitName(name);
+}
+
+export function isConfirmedDistinctName(name: string, confirmed?: string[]): boolean {
+  if (!confirmed?.length) return false;
+  const key = normalizeSubmitName(name);
+  return confirmed.some((n) => normalizeSubmitName(n) === key);
+}
+
+export function namesFromSubmissionForm(
+  form: SubmitFamilyPayload,
+): { name: string; role: DuplicateNameHit["role"]; existingId: number | null }[] {
+  const out: { name: string; role: DuplicateNameHit["role"]; existingId: number | null }[] = [];
+  if (form.father.name.trim()) {
+    out.push({ name: form.father.name.trim(), role: "father", existingId: form.father.existingId });
+  }
   for (const m of form.mothers) {
-    if (m.name.trim()) out.push({ name: m.name.trim(), role: "mother" });
+    if (m.name.trim()) out.push({ name: m.name.trim(), role: "mother", existingId: m.existingId });
   }
   for (const c of form.children) {
-    if (c.name.trim()) out.push({ name: c.name.trim(), role: "child" });
+    if (c.name.trim()) out.push({ name: c.name.trim(), role: "child", existingId: c.existingId ?? null });
   }
   return out;
 }
@@ -33,6 +47,7 @@ export function findSubmissionDuplicates(
     excludeMemberIds?: number[];
     excludeSubmissionId?: string;
     otherSubmissions?: PendingFamilySubmission[];
+    confirmedDistinctNames?: string[];
   },
 ): DuplicateNameHit[] {
   const exclude = new Set(opts?.excludeMemberIds ?? []);
@@ -47,8 +62,10 @@ export function findSubmissionDuplicates(
 
   const hitMap = new Map<string, DuplicateNameHit>();
 
-  for (const { name, role } of namesFromSubmissionForm(form)) {
+  for (const { name, role, existingId } of namesFromSubmissionForm(form)) {
+    if (existingId) continue;
     const key = normalizeName(name);
+    if (isConfirmedDistinctName(name, opts?.confirmedDistinctNames)) continue;
     const members = byName.get(key) ?? [];
     if (members.length > 0) {
       hitMap.set(key, { name, role, members, otherPending: [] });

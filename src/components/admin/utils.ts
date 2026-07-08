@@ -41,14 +41,23 @@ export function downloadFile(name: string, data: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-export function findDuplicates(all: Member[]) {
+export function duplicateGroupKey(group: Member[]): string {
+  return [...group]
+    .sort((a, b) => a.id - b.id)
+    .map((m) => m.id)
+    .join(",");
+}
+
+export function findDuplicates(all: Member[], dismissedKeys?: Set<string>) {
   const map = new Map<string, Member[]>();
   all.forEach((m) => {
     const k = m.full_name.trim().toLowerCase();
     if (!map.has(k)) map.set(k, []);
     map.get(k)!.push(m);
   });
-  return [...map.values()].filter((v) => v.length > 1);
+  return [...map.values()]
+    .filter((v) => v.length > 1)
+    .filter((group) => !dismissedKeys?.has(duplicateGroupKey(group)));
 }
 
 export function buildExports(all: Member[]) {

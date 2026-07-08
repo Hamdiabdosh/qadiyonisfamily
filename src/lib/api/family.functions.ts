@@ -11,6 +11,7 @@ import { collectKinLinkJumps, formatKinLinkJumpsSummary } from "@/lib/kin-anchor
 import { buildMap, chainReachesRoot, fatherChain, motherChain } from "@/lib/lineage";
 import { computeLineageFields } from "@/lib/lineage-compute.server";
 import { recomputeMemberLineage } from "@/lib/lineage-recompute.server";
+import { isConfirmedDistinctName } from "@/lib/submission-validate";
 import { saveMemberPhoto } from "@/lib/uploads.server";
 import {
   buildOrderedChildDrafts,
@@ -55,6 +56,7 @@ const submitPayloadSchema = z.object({
       }),
     )
     .optional(),
+  confirmedDistinctNames: z.array(z.string()).optional(),
 });
 
 export type SubmissionMemberIds = {
@@ -195,6 +197,24 @@ async function findMemberByName(name: string) {
   return rows.find((r) => r.fullName.trim().toLowerCase() === trimmed.toLowerCase()) ?? null;
 }
 
+async function assertNameAvailable(
+  name: string,
+  existingId: number | null | undefined,
+  role: string,
+  linkedIds: Set<number>,
+  confirmedDistinctNames?: string[],
+) {
+  const trimmed = name.trim();
+  if (!trimmed || existingId) return;
+  if (isConfirmedDistinctName(trimmed, confirmedDistinctNames)) return;
+  const hit = await findMemberByName(trimmed);
+  if (hit && !linkedIds.has(hit.id)) {
+    throw new Error(
+      `"${trimmed}" already exists (${role}) — search and select them from the list instead of typing a new name.`,
+    );
+  }
+}
+
 function isNewMotherLineKin(parent: z.infer<typeof parentSchema>): boolean {
   return !parent.existingId && parent.inKin && parent.kinSide === "mother";
 }
@@ -257,24 +277,13 @@ async function assertSubmitFamilyValid(data: z.infer<typeof submitPayloadSchema>
   for (const m of data.mothers) if (m.existingId) linkedIds.add(m.existingId);
   for (const c of data.children) if (c.existingId) linkedIds.add(c.existingId);
 
-  const assertNameAvailable = async (
-    name: string,
-    existingId: number | null | undefined,
-    role: string,
-  ) => {
-    const trimmed = name.trim();
-    if (!trimmed || existingId) return;
-    const hit = await findMemberByName(trimmed);
-    if (hit && !linkedIds.has(hit.id)) {
-      throw new Error(
-        `"${trimmed}" already exists (${role}) — search and select them from the list instead of typing a new name.`,
-      );
-    }
-  };
-
-  await assertNameAvailable(data.father.name, data.father.existingId, "father");
-  for (const m of data.mothers) await assertNameAvailable(m.name, m.existingId, "mother");
-  for (const c of data.children) await assertNameAvailable(c.name, c.existingId, "child");
+  await assertNameAvailable(data.father.name, data.father.existingId, "father", linkedIds, data.confirmedDistinctNames);
+  for (const m of data.mothers) {
+    await assertNameAvailable(m.name, m.existingId, "mother", linkedIds, data.confirmedDistinctNames);
+  }
+  for (const c of data.children) {
+    await assertNameAvailable(c.name, c.existingId, "child", linkedIds, data.confirmedDistinctNames);
+  }
 }
 
 async function insertMember(
@@ -1037,11 +1046,13 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
       if (parent.existingId) return parent.existingId;
       const trimmed = parent.name.trim();
       if (!trimmed) return null;
-      const existing = await findMemberByName(trimmed);
-      if (existing) {
-        throw new Error(
-          `"${trimmed}" already exists — search and select them from the list instead of typing a new name.`,
-        );
+      if (!isConfirmedDistinctName(trimmed, data.confirmedDistinctNames)) {
+        const existing = await findMemberByName(trimmed);
+        if (existing) {
+          throw new Error(
+            `"${trimmed}" already exists — search and select them from the list instead of typing a new name.`,
+          );
+        }
       }
 
       let linkFatherId: number | null = null;
@@ -1121,7 +1132,9 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
             throw new Error("Sibling order references an unknown new child — refresh and try again.");
           }
 
-          const existing = await findMemberByName(kid.name);
+          const existing = isConfirmedDistinctName(kid.name, data.confirmedDistinctNames)
+            ? null
+            : await findMemberByName(kid.name);
           if (existing) {
             throw new Error(
               `"${kid.name.trim()}" already exists — search and select them from the list instead of typing a new name.`,
@@ -1161,7 +1174,9 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
       for (let i = 0; i < allKids.length; i++) {
         const kid = allKids[i];
         const motherId = resolveChildMotherId(motherIds, kid.motherIndex ?? 0);
-        const existing = await findMemberByName(kid.name);
+        const existing = isConfirmedDistinctName(kid.name, data.confirmedDistinctNames)
+          ? null
+          : await findMemberByName(kid.name);
         if (existing) {
           throw new Error(
             `"${kid.name.trim()}" already exists — search and select them from the list instead of typing a new name.`,
@@ -1355,7 +1370,48 @@ export const updateApprovedFamilyFn = createServerFn({ method: "POST" })
   )
   .middleware([requireAdmin])
   .handler(async ({ data, context }) => {
+    await assertSubmitFamilyValid(data.form);
     await syncApprovedFamilyMembers(data.form, data.memberIds, context.userId);
+    return { ok: true };
+  });
+
+const DISMISSED_DUPLICATE_GROUPS_KEY = "dismissed_duplicate_groups";
+
+async function getDismissedDuplicateGroupKeys(): Promise<Set<string>> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, DISMISSED_DUPLICATE_GROUPS_KEY))
+    .limit(1);
+  if (!row?.value) return new Set();
+  try {
+    const parsed = JSON.parse(row.value) as unknown;
+    return new Set(Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export const getDismissedDuplicateGroupsFn = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async () => [...(await getDismissedDuplicateGroupKeys())]);
+
+export const dismissDuplicateGroupFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ groupKey: z.string().min(1) }))
+  .middleware([requireAdmin])
+  .handler(async ({ data }) => {
+    const keys = await getDismissedDuplicateGroupKeys();
+    keys.add(data.groupKey);
+    const value = JSON.stringify([...keys]);
+    const db = getDb();
+    await db
+      .insert(appSettings)
+      .values({ key: DISMISSED_DUPLICATE_GROUPS_KEY, value })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value, updatedAt: new Date() },
+      });
     return { ok: true };
   });
 

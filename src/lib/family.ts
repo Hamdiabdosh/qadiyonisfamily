@@ -2,7 +2,9 @@ import {
   approveMemberFn,
   approveFamilySubmissionFn,
   deleteMemberFn,
+  dismissDuplicateGroupFn,
   getAppSettingsFn,
+  getDismissedDuplicateGroupsFn,
   getMembersFn,
   getPendingFamilySubmissionsFn,
   getPendingFn,
@@ -111,6 +113,8 @@ export type SubmitFamilyPayload = {
   autoApprove?: boolean;
   /** Full desired order of this father's children after this submission. */
   siblingOrder?: SiblingOrderEntry[];
+  /** Full names the submitter confirmed are a different person than any existing match. */
+  confirmedDistinctNames?: string[];
 };
 
 export function sortMembersByBirthOrder<T extends Pick<Member, "birth_order" | "full_name">>(members: T[]): T[] {
@@ -193,4 +197,12 @@ export async function removeMemberPhoto(memberId: number) {
 
 export async function fetchAppSettings() {
   return getAppSettingsFn();
+}
+
+export async function fetchDismissedDuplicateGroups() {
+  return getDismissedDuplicateGroupsFn();
+}
+
+export async function dismissDuplicateGroup(groupKey: string) {
+  await dismissDuplicateGroupFn({ data: { groupKey } });
 }

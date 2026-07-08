@@ -11,6 +11,7 @@ import { AdminNotificationsPage } from "@/components/admin/pages/AdminNotificati
 import { AdminTreePage } from "@/components/admin/pages/AdminTreePage";
 import { AnnouncementsPage } from "@/components/admin/pages/AnnouncementsPage";
 import { DashboardPage } from "@/components/admin/pages/DashboardPage";
+import { DuplicatesPage } from "@/components/admin/pages/DuplicatesPage";
 import { ExploreAdminPage } from "@/components/admin/pages/ExploreAdminPage";
 import { KinAdminPage } from "@/components/admin/pages/KinAdminPage";
 import { FeedbacksPage } from "@/components/admin/pages/FeedbacksPage";
@@ -26,7 +27,9 @@ import {
   approveMember,
   approveFamilySubmission,
   deleteMember,
+  dismissDuplicateGroup,
   fetchAllMembers,
+  fetchDismissedDuplicateGroups,
   fetchPending,
   fetchPendingSubmissions,
   rejectFamilySubmission,
@@ -39,7 +42,7 @@ import { useAuth } from "@/lib/auth";
 
 const searchSchema = z.object({
   view: z
-    .enum(["dashboard", "approval", "accounts", "family", "tree", "kin", "feedbacks", "announcements", "notifications", "explore", "translations", "settings"])
+    .enum(["dashboard", "approval", "accounts", "family", "duplicates", "tree", "kin", "feedbacks", "announcements", "notifications", "explore", "translations", "settings"])
     .optional()
     .default("dashboard"),
 });
@@ -68,9 +71,14 @@ function AdminPage() {
   const { data: feedbacks = [] } = useQuery({ queryKey: ["admin", "feedbacks"], queryFn: getFeedbacksFn });
   const { data: adminNotifications = [] } = useQuery({ queryKey: ["admin", "notifications"], queryFn: getAdminNotificationsFn });
   const { data: accounts = [] } = useQuery({ queryKey: ["admin", "accounts"], queryFn: getAccountsAdminFn });
+  const { data: dismissedDuplicateGroups = [] } = useQuery({
+    queryKey: ["admin", "dismissed-duplicates"],
+    queryFn: fetchDismissedDuplicateGroups,
+  });
 
   const all = useMemo(() => [...approved, ...pending], [approved, pending]);
-  const duplicates = useMemo(() => findDuplicates(all), [all]);
+  const dismissedKeys = useMemo(() => new Set(dismissedDuplicateGroups), [dismissedDuplicateGroups]);
+  const duplicates = useMemo(() => findDuplicates(all, dismissedKeys), [all, dismissedKeys]);
   const incomplete = useMemo(
     () => approved.filter((m) => !m.is_root && !m.father_id && !m.mother_id),
     [approved],
@@ -155,6 +163,15 @@ function AdminPage() {
       qc.invalidateQueries({ queryKey: ["admin"] });
       qc.invalidateQueries({ queryKey: ["members"] });
     },
+    dismissDuplicateGroup: async (groupKey) => {
+      try {
+        await dismissDuplicateGroup(groupKey);
+        toast.success("Marked as not a duplicate");
+        qc.invalidateQueries({ queryKey: ["admin", "dismissed-duplicates"] });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Error");
+      }
+    },
   };
 
   if (loading) {
@@ -200,6 +217,8 @@ function AdminBody({
       return <AccountsPage />;
     case "family":
       return <MembersPage data={data} actions={actions} />;
+    case "duplicates":
+      return <DuplicatesPage data={data} actions={actions} />;
     case "tree":
       return <AdminTreePage />;
     case "feedbacks":

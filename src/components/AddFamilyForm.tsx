@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChildrenByMotherSection } from "@/components/ChildrenByMotherSection";
+import { DuplicateNameDialog } from "@/components/DuplicateNameDialog";
 import { SiblingOrderReview } from "@/components/SiblingOrderReview";
 import {
   emptyChildrenBucket,
@@ -49,9 +50,12 @@ import {
   findSubmissionDuplicates,
   formHasKinLinkedParent,
   linkedMemberIdsFromForm,
+  normalizeSubmitName,
   validateMotherLineCoWives,
   validateNewKinLink,
+  type DuplicateNameHit,
 } from "@/lib/submission-validate";
+import { linkDuplicateEntry } from "@/lib/link-duplicate-entry";
 import {
   assignSequentialBirthOrder,
   assignSequentialDraftBirthOrder,
@@ -710,6 +714,8 @@ export function AddFamilyForm({
   );
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmedDistinctNames, setConfirmedDistinctNames] = useState<string[]>([]);
+  const [duplicateDialog, setDuplicateDialog] = useState<DuplicateNameHit | null>(null);
 
   useEffect(() => {
     const flush = async () => {
@@ -827,6 +833,8 @@ export function AddFamilyForm({
     setParentsOpen(true);
     setChildrenOpen(true);
     setSubmitterOpen(true);
+    setConfirmedDistinctNames([]);
+    setDuplicateDialog(null);
   };
 
   const memberById = useMemo(() => buildMap(allMembers), [allMembers]);
@@ -840,24 +848,34 @@ export function AddFamilyForm({
     else submitterAudioRef.current?.start();
   };
 
-  const onSubmit = async () => {
-    if (!father.name.trim()) {
+  const executeSubmit = async (formState: {
+    father: ParentEntry;
+    mothers: ParentEntry[];
+    childrenByMother: Record<number, ChildrenBucket>;
+    confirmedDistinct: string[];
+  }) => {
+    const { father: formFather, mothers: formMothers, childrenByMother: formChildrenByMother, confirmedDistinct } =
+      formState;
+    const formNamedMothers = formMothers.filter((m) => m.name.trim());
+    const formNamedChildren = flattenChildrenBuckets(formChildrenByMother);
+
+    if (!formFather.name.trim()) {
       toast.error(t("fatherNameRequired"));
       return;
     }
-    if (!hasAliveChosen(father.alive)) {
+    if (!hasAliveChosen(formFather.alive)) {
       toast.error(t("aliveStatusRequired"));
       return;
     }
-    if (namedMothers.some((m) => !hasAliveChosen(m.alive))) {
+    if (formNamedMothers.some((m) => !hasAliveChosen(m.alive))) {
       toast.error(t("aliveStatusRequired"));
       return;
     }
     const memberByIdSubmit = buildMap(allMembers);
     if (formHasKinLinkedParent(
       {
-        father: parentToPayload(father, memberByIdSubmit),
-        mothers: namedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
+        father: parentToPayload(formFather, memberByIdSubmit),
+        mothers: formNamedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
         location,
         children: [],
         submitter: { name: "", phone: "", alive: true },
@@ -872,7 +890,7 @@ export function AddFamilyForm({
       toast.error(t("submitterRequired"));
       return;
     }
-    const allFormKids = Object.values(childrenByMother).flatMap((b) => [...b.sons, ...b.daughters]);
+    const allFormKids = Object.values(formChildrenByMother).flatMap((b) => [...b.sons, ...b.daughters]);
     if (allFormKids.some((c) => c.name.trim() && !hasAliveChosen(c.alive))) {
       toast.error(t("aliveStatusRequired"));
       return;
@@ -885,33 +903,34 @@ export function AddFamilyForm({
       return;
     }
     try {
-      validateMergedSiblingOrder(orderedSiblings, namedChildren);
+      validateMergedSiblingOrder(orderedSiblings, formNamedChildren);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("birthOrderRequired"));
       return;
     }
-    if (!validateParentKin(father, memberByIdSubmit)) {
-      toast.error(father.inKin === true && father.kinAnchorId ? t("kinPathInvalid") : t("parentKinRequired"));
+    if (!validateParentKin(formFather, memberByIdSubmit)) {
+      toast.error(formFather.inKin === true && formFather.kinAnchorId ? t("kinPathInvalid") : t("parentKinRequired"));
       return;
     }
-    for (const m of mothers) {
+    for (const m of formMothers) {
       if (!validateParentKin(m, memberByIdSubmit)) {
         toast.error(m.inKin === true && m.kinAnchorId ? t("kinPathInvalid") : t("parentKinRequired"));
         return;
       }
     }
-    if (!validateMotherLineCoWives(mothers, memberByIdSubmit)) {
+    if (!validateMotherLineCoWives(formMothers, memberByIdSubmit)) {
       toast.error(t("motherLineCoWivesNotRegistered"));
       return;
     }
     const payload: SubmitFamilyPayload = {
-      father: parentToPayload(father, memberByIdSubmit),
-      mothers: namedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
+      father: parentToPayload(formFather, memberByIdSubmit),
+      mothers: formNamedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
       location,
       children: assignSequentialBirthOrder(orderedDrafts).map(({ key: _key, ...child }) => child),
       siblingOrder: orderedSiblings.length > 0 ? siblingOrderFromItems(orderedSiblings) : undefined,
       submitter: { name: submitterName, phone: submitterPhone, alive: true },
       notes,
+      confirmedDistinctNames: confirmedDistinct,
       ...(autoApprove ? { autoApprove: true } : {}),
     };
     const duplicateExcludeIds = [
@@ -922,9 +941,10 @@ export function AddFamilyForm({
     ];
     const duplicates = findSubmissionDuplicates(payload, allMembers, {
       excludeMemberIds: duplicateExcludeIds,
+      confirmedDistinctNames: confirmedDistinct,
     });
     if (duplicates.length > 0) {
-      toast.error(`${t("duplicateWarning")} (${duplicates[0].name})`);
+      setDuplicateDialog(duplicates[0]);
       return;
     }
     setSubmitting(true);
@@ -953,7 +973,33 @@ export function AddFamilyForm({
       reset(again);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Error");
-    } finally { setSubmitting(false); }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSubmit = () =>
+    executeSubmit({ father, mothers, childrenByMother, confirmedDistinct: confirmedDistinctNames });
+
+  const handleDuplicateDistinct = () => {
+    const hit = duplicateDialog;
+    if (!hit) return;
+    const norm = normalizeSubmitName(hit.name);
+    const next = [...confirmedDistinctNames, norm];
+    setConfirmedDistinctNames(next);
+    setDuplicateDialog(null);
+    void executeSubmit({ father, mothers, childrenByMother, confirmedDistinct: next });
+  };
+
+  const handleDuplicateLink = (memberId: number) => {
+    const hit = duplicateDialog;
+    if (!hit) return;
+    const linked = linkDuplicateEntry(hit, memberId, allMembers, { father, mothers, childrenByMother });
+    setFather(linked.father);
+    setMothers(linked.mothers);
+    setChildrenByMother(linked.childrenByMother);
+    setDuplicateDialog(null);
+    void executeSubmit({ ...linked, confirmedDistinct: confirmedDistinctNames });
   };
 
   const parentsAudioUrl = String(settings["add_family_audio_parents_url"] ?? "");
@@ -1145,6 +1191,17 @@ export function AddFamilyForm({
         {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
         {autoApprove ? "Add family" : t("submitForApproval")}
       </Button>
+
+      <DuplicateNameDialog
+        hit={duplicateDialog}
+        byId={memberById}
+        open={duplicateDialog != null}
+        onOpenChange={(open) => {
+          if (!open) setDuplicateDialog(null);
+        }}
+        onLinkSame={handleDuplicateLink}
+        onDistinct={handleDuplicateDistinct}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ export type AdminView =
   | "approval"
   | "accounts"
   | "family"
+  | "duplicates"
   | "tree"
   | "feedbacks"
   | "announcements"
@@ -35,6 +36,7 @@ export type AdminActions = {
   exportCSV: () => void;
   exportJSON: () => void;
   exportGEDCOM: () => void;
+  dismissDuplicateGroup: (groupKey: string) => Promise<void>;
 };
 
 export type AdminCounts = {
