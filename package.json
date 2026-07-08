@@ -16,6 +16,7 @@
     "db:seed-admin": "bun run scripts/seed-admin.ts",
     "db:seed-test-family": "bun run scripts/seed-family-test.ts",
     "db:recompute-lineage": "bun run scripts/recompute-lineage.ts",
+    "db:renumber-sibling-order": "bun run scripts/renumber-sibling-birth-order.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

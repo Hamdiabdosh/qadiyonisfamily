@@ -95,6 +95,11 @@ export type SubmitFamilyChild = {
   existingId?: number | null;
 };
 
+export type SiblingOrderEntry = {
+  existingId: number | null;
+  tempKey: string | null;
+};
+
 export type SubmitFamilyPayload = {
   father: SubmitFamilyParent;
   mothers: SubmitFamilyParent[];
@@ -104,6 +109,8 @@ export type SubmitFamilyPayload = {
   notes: string;
   /** Admin-only: insert as approved immediately (ignored for non-admins). */
   autoApprove?: boolean;
+  /** Full desired order of this father's children after this submission. */
+  siblingOrder?: SiblingOrderEntry[];
 };
 
 export function sortMembersByBirthOrder<T extends Pick<Member, "birth_order" | "full_name">>(members: T[]): T[] {

@@ -132,6 +132,16 @@ export function buildFamilyUnits(members: Member[], wives: WifeLink[]): FamilyUn
   return units.sort((a, b) => a.generation - b.generation || familyLabel(a).localeCompare(familyLabel(b)));
 }
 
+export function buildUnitLookup(units: FamilyUnit[]) {
+  const byFather = new Map<number, FamilyUnit>();
+  const byMother = new Map<number, FamilyUnit>();
+  for (const u of units) {
+    if (u.father) byFather.set(u.father.id, u);
+    for (const m of u.mothers) byMother.set(m.id, u);
+  }
+  return { byFather, byMother };
+}
+
 export function familyLabel(unit: FamilyUnit): string {
   const father = unit.father?.full_name ?? "";
   const mothers = unit.mothers.map((m) => m.full_name).filter(Boolean);

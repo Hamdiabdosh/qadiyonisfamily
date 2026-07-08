@@ -54,6 +54,12 @@ export function groupChildrenByMother(
 
 export type OrderedChildDraft = SubmitFamilyChild & { key: string };
 
+export type OrderedSiblingItem =
+  | { kind: "existing"; existingId: number; name: string; gender: "male" | "female" }
+  | { kind: "draft"; draft: OrderedChildDraft };
+
+export type SiblingOrderEntry = { existingId: number | null; tempKey: string | null };
+
 export function buildOrderedChildDrafts(
   children: SubmitFamilyChild[],
 ): OrderedChildDraft[] {
@@ -63,31 +69,106 @@ export function buildOrderedChildDrafts(
   }));
 }
 
+export function siblingItemIdentity(item: OrderedSiblingItem): string {
+  if (item.kind === "existing") return `e:${item.existingId}`;
+  if (item.draft.existingId) return `e:${item.draft.existingId}`;
+  return `d:${item.draft.key}`;
+}
+
+export function existingSiblingToItem(
+  member: Pick<Member, "id" | "full_name" | "gender">,
+): OrderedSiblingItem {
+  return {
+    kind: "existing",
+    existingId: member.id,
+    name: member.full_name,
+    gender: member.gender,
+  };
+}
+
 export function motherLabelForIndex(motherNames: string[], motherIndex: number): string {
   const name = motherNames[motherIndex]?.trim();
   return name || `Mother ${motherIndex + 1}`;
 }
 
-/** Assign sequential global birth_order 1..N preserving current relative order. */
+/** Assign sequential global birth_order 1..N preserving current relative order (display preview only). */
 export function assignSequentialBirthOrder<T extends SubmitFamilyChild>(children: T[]): T[] {
   return children.map((c, i) => ({ ...c, birthOrder: i + 1 }));
 }
 
-/** Validate unique birth_order values 1..N among named children. */
-export function validateGlobalBirthOrder(children: SubmitFamilyChild[]): void {
-  const named = children.filter((c) => c.name.trim());
-  if (named.length === 0) return;
+export function assignSequentialDraftBirthOrder(items: OrderedSiblingItem[]): OrderedSiblingItem[] {
+  let rank = 1;
+  return items.map((item) => {
+    if (item.kind === "existing") return item;
+    return { kind: "draft", draft: { ...item.draft, birthOrder: rank++ } };
+  });
+}
 
-  const orders = named.map((c) => c.birthOrder);
-  const unique = new Set(orders);
-  if (unique.size !== orders.length) {
-    throw new Error("Duplicate sibling birth order — use the sibling order step to set unique ranks.");
+export function siblingOrderFromItems(items: OrderedSiblingItem[]): SiblingOrderEntry[] {
+  return items.map((item) => {
+    if (item.kind === "existing") {
+      return { existingId: item.existingId, tempKey: null };
+    }
+    if (item.draft.existingId) {
+      return { existingId: item.draft.existingId, tempKey: null };
+    }
+    return { existingId: null, tempKey: item.draft.key };
+  });
+}
+
+export function draftsFromOrderedItems(items: OrderedSiblingItem[]): OrderedChildDraft[] {
+  return items
+    .filter((item): item is { kind: "draft"; draft: OrderedChildDraft } => item.kind === "draft")
+    .map((item) => item.draft);
+}
+
+/** Validate merged sibling order: unique anchors/keys and every named draft is listed. */
+export function validateMergedSiblingOrder(
+  items: OrderedSiblingItem[],
+  namedDrafts: SubmitFamilyChild[],
+): void {
+  const seenIds = new Set<number>();
+  const seenKeys = new Set<string>();
+
+  for (const item of items) {
+    if (item.kind === "existing") {
+      if (seenIds.has(item.existingId)) {
+        throw new Error("Duplicate sibling in order list.");
+      }
+      seenIds.add(item.existingId);
+      continue;
+    }
+
+    if (item.draft.existingId) {
+      if (seenIds.has(item.draft.existingId)) {
+        throw new Error("Duplicate sibling in order list.");
+      }
+      seenIds.add(item.draft.existingId);
+    } else {
+      if (seenKeys.has(item.draft.key)) {
+        throw new Error("Duplicate sibling in order list.");
+      }
+      seenKeys.add(item.draft.key);
+    }
   }
 
-  const sorted = [...orders].sort((a, b) => a - b);
-  for (let i = 0; i < sorted.length; i++) {
-    if (sorted[i] !== i + 1) {
-      throw new Error("Sibling birth order must be consecutive from 1 to the number of children.");
+  const orderedDrafts = buildOrderedChildDrafts(namedDrafts);
+  for (const draft of orderedDrafts) {
+    const listed = draft.existingId
+      ? seenIds.has(draft.existingId)
+      : seenKeys.has(draft.key);
+    if (!listed) {
+      throw new Error("Every child must have a position in the sibling order list.");
     }
   }
 }
+
+/** @deprecated Use validateMergedSiblingOrder — kept for callers still passing flat drafts only. */
+export function validateGlobalBirthOrder(children: SubmitFamilyChild[]): void {
+  validateMergedSiblingOrder(
+    buildOrderedChildDrafts(children).map((draft) => ({ kind: "draft", draft })),
+    children,
+  );
+}
+
+export const SIBLING_BIRTH_ORDER_SPACING = 1000;

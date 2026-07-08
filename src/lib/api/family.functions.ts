@@ -12,6 +12,10 @@ import { buildMap, chainReachesRoot, fatherChain, motherChain } from "@/lib/line
 import { computeLineageFields } from "@/lib/lineage-compute.server";
 import { recomputeMemberLineage } from "@/lib/lineage-recompute.server";
 import { saveMemberPhoto } from "@/lib/uploads.server";
+import {
+  buildOrderedChildDrafts,
+  SIBLING_BIRTH_ORDER_SPACING,
+} from "@/lib/sibling-order";
 
 const parentSchema = z.object({
   name: z.string(),
@@ -43,6 +47,14 @@ const submitPayloadSchema = z.object({
   }),
   notes: z.string(),
   autoApprove: z.boolean().optional(),
+  siblingOrder: z
+    .array(
+      z.object({
+        existingId: z.number().nullable(),
+        tempKey: z.string().nullable(),
+      }),
+    )
+    .optional(),
 });
 
 export type SubmissionMemberIds = {
@@ -91,12 +103,85 @@ function assertGlobalSiblingOrder(children: z.infer<typeof submitPayloadSchema>[
   if (uniq.size !== orders.length) {
     throw new Error("Duplicate sibling birth order — each child must have a unique rank.");
   }
-  const sorted = [...orders].sort((a, b) => a - b);
-  for (let i = 0; i < sorted.length; i++) {
-    if (sorted[i] !== i + 1) {
-      throw new Error("Sibling birth order must be consecutive from 1 to the number of children.");
+}
+
+type DbExecutor = Pick<ReturnType<typeof getDb>, "insert" | "select" | "update" | "delete">;
+
+async function fetchFatherChildren(fatherId: number, dbOrTx: DbExecutor = getDb()) {
+  return dbOrTx
+    .select()
+    .from(familyMembers)
+    .where(eq(familyMembers.fatherId, fatherId))
+    .orderBy(asc(familyMembers.birthOrder), asc(familyMembers.fullName));
+}
+
+async function resolveFatherSiblingOrder(
+  fatherId: number,
+  mergedOrder: Array<{ existingId: number | null; tempKey: string }>,
+): Promise<Map<string | number, number>> {
+  const existingChildren = await fetchFatherChildren(fatherId);
+  const existingIds = new Set(existingChildren.map((c) => c.id));
+
+  const orderExistingIds = mergedOrder
+    .map((entry) => entry.existingId)
+    .filter((id): id is number => id != null);
+
+  for (const id of orderExistingIds) {
+    if (!existingIds.has(id)) {
+      throw new Error(
+        "Sibling order is stale — an existing child is no longer linked to this father. Refresh and try again.",
+      );
     }
   }
+
+  const orderExistingSet = new Set(orderExistingIds);
+  if (
+    orderExistingSet.size !== existingIds.size ||
+    ![...existingIds].every((id) => orderExistingSet.has(id))
+  ) {
+    throw new Error(
+      "Sibling order must include every existing child of this father. Refresh and try again.",
+    );
+  }
+
+  const result = new Map<string | number, number>();
+  mergedOrder.forEach((entry, index) => {
+    const birthOrder = (index + 1) * SIBLING_BIRTH_ORDER_SPACING;
+    if (entry.existingId != null) {
+      result.set(entry.existingId, birthOrder);
+    } else if (entry.tempKey) {
+      result.set(entry.tempKey, birthOrder);
+    }
+  });
+  return result;
+}
+
+function siblingOrderInput(form: z.infer<typeof submitPayloadSchema>) {
+  return (
+    form.siblingOrder?.map((entry) => ({
+      existingId: entry.existingId,
+      tempKey: entry.tempKey ?? "",
+    })) ?? []
+  );
+}
+
+async function resolveBirthOrderMap(
+  fatherId: number | null | undefined,
+  form: z.infer<typeof submitPayloadSchema>,
+): Promise<Map<string | number, number> | null> {
+  if (!fatherId || !form.siblingOrder?.length) return null;
+  return resolveFatherSiblingOrder(fatherId, siblingOrderInput(form));
+}
+
+function birthOrderForDraftChild(
+  map: Map<string | number, number> | null,
+  draft: ReturnType<typeof buildOrderedChildDrafts>[number],
+  existingId: number | null,
+  fallback: number,
+): number {
+  if (!map) return fallback;
+  if (existingId != null) return map.get(existingId) ?? fallback;
+  return map.get(draft.key) ?? fallback;
 }
 
 async function findMemberByName(name: string) {
@@ -211,8 +296,9 @@ async function insertMember(
     birthOrder?: number | null;
     submissionId?: string | null;
   },
+  dbOrTx: DbExecutor = getDb(),
 ) {
-  const db = getDb();
+  const db = dbOrTx;
   const father = values.fatherId ? await getMemberById(values.fatherId) : null;
   const mother = values.motherId ? await getMemberById(values.motherId) : null;
   const lineage = computeLineageFields(
@@ -545,17 +631,23 @@ async function syncSubmissionMembers(
 
   const nextChildIds: number[] = [];
   const namedChildren = form.children.filter((c) => c.name.trim());
+  const childDrafts = buildOrderedChildDrafts(namedChildren);
+  const birthOrderMap = await resolveBirthOrderMap(fatherLinkId, form);
 
   for (let i = 0; i < namedChildren.length; i++) {
     const kid = namedChildren[i];
+    const draft = childDrafts[i];
     const motherId = resolveChildMotherId(nextMotherIds, kid.motherIndex);
-    const existingId = memberIds.childIds[i];
+    const existingId = memberIds.childIds[i] ?? null;
+    const birthOrder = birthOrderMap
+      ? birthOrderForDraftChild(birthOrderMap, draft, existingId, kid.birthOrder)
+      : kid.birthOrder;
     if (existingId) {
       await patchPendingMember(existingId, {
         fullName: kid.name.trim(),
         isAlive: kid.alive,
         gender: kid.gender,
-        birthOrder: kid.birthOrder,
+        birthOrder,
         fatherId: fatherLinkId,
         motherId,
         notes: form.notes || null,
@@ -569,7 +661,7 @@ async function syncSubmissionMembers(
       fullName: kid.name.trim(),
       gender: kid.gender,
       isAlive: kid.alive,
-      birthOrder: kid.birthOrder,
+      birthOrder,
       fatherId: fatherLinkId,
       motherId,
       notes: form.notes || null,
@@ -578,6 +670,20 @@ async function syncSubmissionMembers(
       ...submitMeta,
     });
     nextChildIds.push(row.id);
+  }
+
+  if (birthOrderMap && fatherLinkId) {
+    await db.transaction(async (tx) => {
+      for (const entry of siblingOrderInput(form)) {
+        if (entry.existingId == null || nextChildIds.includes(entry.existingId)) continue;
+        const birthOrder = birthOrderMap.get(entry.existingId);
+        if (birthOrder == null) continue;
+        await tx
+          .update(familyMembers)
+          .set({ birthOrder, updatedAt: new Date() })
+          .where(eq(familyMembers.id, entry.existingId));
+      }
+    });
   }
 
   for (const removedId of memberIds.childIds.filter((id) => !nextChildIds.includes(id))) {
@@ -660,17 +766,23 @@ async function syncApprovedFamilyMembers(
 
   const nextChildIds: number[] = [];
   const namedChildren = form.children.filter((c) => c.name.trim());
+  const childDrafts = buildOrderedChildDrafts(namedChildren);
+  const birthOrderMap = await resolveBirthOrderMap(fatherLinkId, form);
 
   for (let i = 0; i < namedChildren.length; i++) {
     const kid = namedChildren[i];
+    const draft = childDrafts[i];
     const motherId = resolveChildMotherId(nextMotherIds, kid.motherIndex);
-    const existingId = memberIds.childIds[i];
+    const existingId = memberIds.childIds[i] ?? null;
+    const birthOrder = birthOrderMap
+      ? birthOrderForDraftChild(birthOrderMap, draft, existingId, kid.birthOrder)
+      : kid.birthOrder;
     if (existingId) {
       await patchMember(existingId, {
         fullName: kid.name.trim(),
         isAlive: kid.alive,
         gender: kid.gender,
-        birthOrder: kid.birthOrder,
+        birthOrder,
         fatherId: fatherLinkId,
         motherId,
         notes: form.notes || null,
@@ -684,7 +796,7 @@ async function syncApprovedFamilyMembers(
       fullName: kid.name.trim(),
       gender: kid.gender,
       isAlive: kid.alive,
-      birthOrder: kid.birthOrder,
+      birthOrder,
       fatherId: fatherLinkId,
       motherId,
       notes: form.notes || null,
@@ -694,6 +806,20 @@ async function syncApprovedFamilyMembers(
       ...submitMeta,
     });
     nextChildIds.push(row.id);
+  }
+
+  if (birthOrderMap && fatherLinkId) {
+    await db.transaction(async (tx) => {
+      for (const entry of siblingOrderInput(form)) {
+        if (entry.existingId == null || nextChildIds.includes(entry.existingId)) continue;
+        const birthOrder = birthOrderMap.get(entry.existingId);
+        if (birthOrder == null) continue;
+        await tx
+          .update(familyMembers)
+          .set({ birthOrder, updatedAt: new Date() })
+          .where(eq(familyMembers.id, entry.existingId));
+      }
+    });
   }
 
   for (const removedId of memberIds.childIds.filter((id) => !nextChildIds.includes(id))) {
@@ -969,36 +1095,100 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
       }
     }
 
-    const allKids = [...data.children]
-      .filter((c) => c.name.trim())
-      .sort((a, b) => a.birthOrder - b.birthOrder);
+    const allKids = [...data.children].filter((c) => c.name.trim());
+    const kidDrafts = buildOrderedChildDrafts(allKids);
+    const kidByKey = new Map(kidDrafts.map((draft) => [draft.key, draft]));
+    const orderInput = siblingOrderInput(data);
 
-    for (const kid of allKids) {
-      const motherId = resolveChildMotherId(motherIds, kid.motherIndex ?? 0);
-      const existing = await findMemberByName(kid.name);
-      if (existing) {
-        throw new Error(
-          `"${kid.name.trim()}" already exists — search and select them from the list instead of typing a new name.`,
-        );
-      }
-      const row = await insertMember({
-        fullName: kid.name.trim(),
-        gender: kid.gender,
-        fatherId,
-        motherId,
-        isAlive: kid.alive,
-        birthOrder: kid.birthOrder,
-        currentLocation: childLocation,
-        submittedBy: submitter.name || null,
-        submitterPhone: submitter.phone || null,
-        submitterIsAlive: submitter.alive,
-        submittedByUser: context.userId,
-        notes: data.notes || null,
-        submissionId,
-        isApproved: autoApprove,
-        approvedBy: autoApprove ? context.userId : null,
+    if (fatherId && orderInput.length > 0) {
+      const birthOrderMap = await resolveFatherSiblingOrder(fatherId, orderInput);
+
+      await db.transaction(async (tx) => {
+        for (const entry of orderInput) {
+          if (entry.existingId != null) {
+            const birthOrder = birthOrderMap.get(entry.existingId);
+            if (birthOrder == null) continue;
+            await tx
+              .update(familyMembers)
+              .set({ birthOrder, updatedAt: new Date() })
+              .where(eq(familyMembers.id, entry.existingId));
+            continue;
+          }
+
+          if (!entry.tempKey) continue;
+          const kid = kidByKey.get(entry.tempKey);
+          if (!kid) {
+            throw new Error("Sibling order references an unknown new child — refresh and try again.");
+          }
+
+          const existing = await findMemberByName(kid.name);
+          if (existing) {
+            throw new Error(
+              `"${kid.name.trim()}" already exists — search and select them from the list instead of typing a new name.`,
+            );
+          }
+
+          const motherId = resolveChildMotherId(motherIds, kid.motherIndex ?? 0);
+          const birthOrder = birthOrderMap.get(entry.tempKey);
+          if (birthOrder == null) continue;
+
+          const row = await insertMember(
+            {
+              fullName: kid.name.trim(),
+              gender: kid.gender,
+              fatherId,
+              motherId,
+              isAlive: kid.alive,
+              birthOrder,
+              currentLocation: childLocation,
+              submittedBy: submitter.name || null,
+              submitterPhone: submitter.phone || null,
+              submitterIsAlive: submitter.alive,
+              submittedByUser: context.userId,
+              notes: data.notes || null,
+              submissionId,
+              isApproved: autoApprove,
+              approvedBy: autoApprove ? context.userId : null,
+            },
+            tx,
+          );
+          memberIds.childIds.push(row.id);
+        }
       });
-      memberIds.childIds.push(row.id);
+    } else {
+      const existingCount = fatherId ? (await fetchFatherChildren(fatherId)).length : 0;
+
+      for (let i = 0; i < allKids.length; i++) {
+        const kid = allKids[i];
+        const motherId = resolveChildMotherId(motherIds, kid.motherIndex ?? 0);
+        const existing = await findMemberByName(kid.name);
+        if (existing) {
+          throw new Error(
+            `"${kid.name.trim()}" already exists — search and select them from the list instead of typing a new name.`,
+          );
+        }
+        const birthOrder = fatherId
+          ? (existingCount + i + 1) * SIBLING_BIRTH_ORDER_SPACING
+          : (i + 1) * SIBLING_BIRTH_ORDER_SPACING;
+        const row = await insertMember({
+          fullName: kid.name.trim(),
+          gender: kid.gender,
+          fatherId,
+          motherId,
+          isAlive: kid.alive,
+          birthOrder,
+          currentLocation: childLocation,
+          submittedBy: submitter.name || null,
+          submitterPhone: submitter.phone || null,
+          submitterIsAlive: submitter.alive,
+          submittedByUser: context.userId,
+          notes: data.notes || null,
+          submissionId,
+          isApproved: autoApprove,
+          approvedBy: autoApprove ? context.userId : null,
+        });
+        memberIds.childIds.push(row.id);
+      }
     }
 
     await db

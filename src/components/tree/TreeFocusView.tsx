@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { FamilyUnitCard } from "@/components/tree/FamilyUnitCard";
 import { TreeBreadcrumb } from "@/components/tree/TreeBreadcrumb";
-import { buildFamilyUnits, type WifeLink } from "@/lib/admin-family-units";
+import { buildFamilyUnits, buildUnitLookup, type FamilyUnit, type WifeLink } from "@/lib/admin-family-units";
 import type { Member } from "@/lib/family";
+import { useI18n } from "@/lib/i18n";
 
 type Props = {
   members: Member[];
@@ -16,41 +17,34 @@ const COLLAPSE_KEY = "tree-collapsed";
 
 function resolveFocusedUnit(
   focusMember: Member,
-  units: ReturnType<typeof buildFamilyUnits>,
-  unitByFather: Map<number, ReturnType<typeof buildFamilyUnits>[number]>,
-): ReturnType<typeof buildFamilyUnits>[number] | null {
-  const ownUnit = unitByFather.get(focusMember.id);
+  units: FamilyUnit[],
+  lookup: ReturnType<typeof buildUnitLookup>,
+): FamilyUnit | null {
+  const ownUnit = lookup.byFather.get(focusMember.id) ?? lookup.byMother.get(focusMember.id);
   if (ownUnit) return ownUnit;
 
-  const motherUnit = units.find((u) => u.motherLed && u.mothers[0]?.id === focusMember.id);
-  if (motherUnit) return motherUnit;
-
   if (focusMember.father_id) {
-    const parentUnit = unitByFather.get(focusMember.father_id);
+    const parentUnit = lookup.byFather.get(focusMember.father_id);
     if (parentUnit?.memberIds.includes(focusMember.id)) return parentUnit;
   }
 
   if (focusMember.mother_id) {
-    const parentUnit = units.find(
-      (u) => u.motherLed && u.mothers[0]?.id === focusMember.mother_id && u.memberIds.includes(focusMember.id),
-    );
-    if (parentUnit) return parentUnit;
+    const parentUnit = lookup.byMother.get(focusMember.mother_id);
+    if (parentUnit?.memberIds.includes(focusMember.id)) return parentUnit;
   }
 
   return units.find((u) => u.key === `solo-${focusMember.id}`) ?? null;
 }
 
 export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Props) {
+  const { t } = useI18n();
   const units = useMemo(() => buildFamilyUnits(members, wives), [members, wives]);
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
-  const unitByFather = useMemo(
-    () => new Map(units.filter((u) => u.father).map((u) => [u.father!.id, u])),
-    [units],
-  );
+  const unitLookup = useMemo(() => buildUnitLookup(units), [units]);
 
   const root = useMemo(() => members.find((m) => m.is_root) ?? null, [members]);
   const focusMember = focusedId ? byId.get(focusedId) ?? null : root;
-  const focusedUnit = focusMember ? resolveFocusedUnit(focusMember, units, unitByFather) : null;
+  const focusedUnit = focusMember ? resolveFocusedUnit(focusMember, units, unitLookup) : null;
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
@@ -84,7 +78,7 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
 
   const siblings = useMemo(() => {
     if (!focusMember?.father_id) return [];
-    return members.filter((m) => m.father_id === focusMember.father_id && m.gender === "male");
+    return members.filter((m) => m.father_id === focusMember.father_id);
   }, [members, focusMember]);
 
   if (!focusMember) return null;
@@ -115,7 +109,7 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
 
       {siblings.length > 1 ? (
         <div className="rounded-lg border p-2">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Other sons in this branch</p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">{t("otherChildrenInBranch")}</p>
           <div className="flex flex-wrap gap-1.5">
             {siblings.map((s) => (
               <button

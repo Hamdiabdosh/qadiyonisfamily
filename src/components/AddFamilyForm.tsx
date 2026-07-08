@@ -15,6 +15,7 @@ import {
   fetchAllMembers,
   searchMemberByName,
   submitFamily,
+  sortMembersByBirthOrder,
   type KinLinkSide,
   type Member,
   type SubmitFamilyPayload,
@@ -53,9 +54,12 @@ import {
 } from "@/lib/submission-validate";
 import {
   assignSequentialBirthOrder,
+  assignSequentialDraftBirthOrder,
   buildOrderedChildDrafts,
-  validateGlobalBirthOrder,
-  type OrderedChildDraft,
+  siblingItemIdentity,
+  siblingOrderFromItems,
+  validateMergedSiblingOrder,
+  type OrderedSiblingItem,
 } from "@/lib/sibling-order";
 import {
   DEFAULT_LOCATION,
@@ -731,7 +735,11 @@ export function AddFamilyForm({
     () => flattenChildrenBuckets(childrenByMother).filter((c) => c.name.trim()),
     [childrenByMother],
   );
-  const [orderedChildren, setOrderedChildren] = useState<OrderedChildDraft[]>([]);
+  const existingSiblings = useMemo(() => {
+    if (initialFamilyUnit || father.existingId == null) return [];
+    return sortMembersByBirthOrder(allMembers.filter((m) => m.father_id === father.existingId));
+  }, [initialFamilyUnit, father.existingId, allMembers]);
+  const [orderedSiblings, setOrderedSiblings] = useState<OrderedSiblingItem[]>([]);
   const knownSubmitter = mode === "extendSelf" && !!defaultSubmitterName && !!defaultSubmitterPhone;
 
   useEffect(() => {
@@ -747,19 +755,47 @@ export function AddFamilyForm({
   }, [namedMothers.length, t]);
 
   useEffect(() => {
-    const next = buildOrderedChildDrafts(assignSequentialBirthOrder(namedChildren));
-    if (next.length === 0) {
-      setOrderedChildren([]);
+    const nextDrafts = buildOrderedChildDrafts(assignSequentialBirthOrder(namedChildren));
+    const draftExistingIds = new Set(
+      nextDrafts.map((draft) => draft.existingId).filter((id): id is number => id != null),
+    );
+    const anchorItems: OrderedSiblingItem[] = existingSiblings
+      .filter((member) => !draftExistingIds.has(member.id))
+      .map((member) => ({
+        kind: "existing" as const,
+        existingId: member.id,
+        name: member.full_name,
+        gender: member.gender,
+      }));
+
+    if (nextDrafts.length === 0 && anchorItems.length === 0) {
+      setOrderedSiblings([]);
       return;
     }
 
-    setOrderedChildren((prev) => {
-      if (prev.length === 0) return next;
-      const prevByKey = new Map(prev.map((c) => [c.key, c]));
-      const stitched = next.map((n) => prevByKey.get(n.key) ?? n);
-      return assignSequentialBirthOrder(stitched);
+    setOrderedSiblings((prev) => {
+      const initial = [
+        ...anchorItems,
+        ...nextDrafts.map((draft) => ({ kind: "draft" as const, draft })),
+      ];
+      if (prev.length === 0) return assignSequentialDraftBirthOrder(initial);
+
+      const nextByIdentity = new Map(initial.map((item) => [siblingItemIdentity(item), item]));
+      const stitched: OrderedSiblingItem[] = [];
+      for (const item of prev) {
+        const identity = siblingItemIdentity(item);
+        const replacement = nextByIdentity.get(identity);
+        if (replacement) {
+          stitched.push(replacement);
+          nextByIdentity.delete(identity);
+        }
+      }
+      for (const item of nextByIdentity.values()) {
+        stitched.push(item);
+      }
+      return assignSequentialDraftBirthOrder(stitched);
     });
-  }, [namedChildren]);
+  }, [namedChildren, existingSiblings]);
 
   useEffect(() => {
     if (mode !== "extendSelf" || !selfMemberId) return;
@@ -783,7 +819,7 @@ export function AddFamilyForm({
     setMothers([emptyParent()]);
     if (!keepLocation) setLocationSelection({ ...DEFAULT_LOCATION });
     setChildrenByMother({ 0: emptyChildrenBucket() });
-    setOrderedChildren([]);
+    setOrderedSiblings([]);
     setActiveMotherTab("0");
     setNotes("");
     setSubmitterName("");
@@ -841,12 +877,15 @@ export function AddFamilyForm({
       toast.error(t("aliveStatusRequired"));
       return;
     }
-    if (orderedChildren.some((c) => !c.birthOrder || c.birthOrder < 1)) {
+    const orderedDrafts = orderedSiblings.flatMap((item) =>
+      item.kind === "draft" ? [item.draft] : [],
+    );
+    if (orderedDrafts.some((c) => !c.birthOrder || c.birthOrder < 1)) {
       toast.error(t("birthOrderRequired"));
       return;
     }
     try {
-      validateGlobalBirthOrder(orderedChildren);
+      validateMergedSiblingOrder(orderedSiblings, namedChildren);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("birthOrderRequired"));
       return;
@@ -869,7 +908,8 @@ export function AddFamilyForm({
       father: parentToPayload(father, memberByIdSubmit),
       mothers: namedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
       location,
-      children: orderedChildren.map(({ key: _key, ...child }) => child),
+      children: assignSequentialBirthOrder(orderedDrafts).map(({ key: _key, ...child }) => child),
+      siblingOrder: orderedSiblings.length > 0 ? siblingOrderFromItems(orderedSiblings) : undefined,
       submitter: { name: submitterName, phone: submitterPhone, alive: true },
       notes,
       ...(autoApprove ? { autoApprove: true } : {}),
@@ -1028,8 +1068,8 @@ export function AddFamilyForm({
             <SiblingOrderReview
               children={namedChildren}
               motherNames={motherNames}
-              ordered={orderedChildren}
-              onChange={(next) => setOrderedChildren(assignSequentialBirthOrder(next))}
+              ordered={orderedSiblings}
+              onChange={(next) => setOrderedSiblings(assignSequentialDraftBirthOrder(next))}
             />
           </CardContent>
         </SectionCard>
