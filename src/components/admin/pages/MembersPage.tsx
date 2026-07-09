@@ -102,6 +102,7 @@ export function MembersPage({ data, actions }: Props) {
   };
 
   const requestDelete = (member: Member) => {
+    if (member.is_root) return;
     setSheetOpen(false);
     setDeleteMember(member);
   };

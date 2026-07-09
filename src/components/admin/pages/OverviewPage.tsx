@@ -125,7 +125,7 @@ export function OverviewPage({ data }: Props) {
                     className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-muted/50"
                     onClick={() => nav({ to: "/admin", search: { view: "incomplete" } })}
                   >
-                    <span>{incomplete.length} member(s) without parents</span>
+                    <span>{incomplete.length} member(s) need parent links</span>
                     <GitBranch className="size-4 text-out-alive" />
                   </button>
                 )}

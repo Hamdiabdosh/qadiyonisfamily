@@ -142,9 +142,16 @@ export function buildUnitLookup(units: FamilyUnit[]) {
   return { byFather, byMother };
 }
 
+/** Admin display: numeric-only wife names become "Wife 1", etc. */
+export function formatFamilyParentName(name: string): string {
+  const trimmed = name.trim();
+  if (/^\d+$/.test(trimmed)) return `Wife ${trimmed}`;
+  return trimmed;
+}
+
 export function familyLabel(unit: FamilyUnit): string {
   const father = unit.father?.full_name ?? "";
-  const mothers = unit.mothers.map((m) => m.full_name).filter(Boolean);
+  const mothers = unit.mothers.map((m) => formatFamilyParentName(m.full_name)).filter(Boolean);
   if (father && mothers.length) return `${father} & ${mothers.join(", ")}`;
   if (father) return father;
   if (mothers.length) return mothers.join(", ");

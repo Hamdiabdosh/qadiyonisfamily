@@ -66,10 +66,12 @@ export function MemberActionsMenu({
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(member)}>
-          <Trash2 className="size-4 mr-2" />
-          Delete
-        </DropdownMenuItem>
+        {!member.is_root && (
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(member)}>
+            <Trash2 className="size-4 mr-2" />
+            Delete
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

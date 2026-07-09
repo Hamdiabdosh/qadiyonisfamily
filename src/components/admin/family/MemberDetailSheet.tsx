@@ -117,10 +117,12 @@ export function MemberDetailSheet({
                 )}
               </Button>
             )}
-            <Button variant="destructive" className="justify-start" onClick={() => onDelete(current)}>
-              <Trash2 className="size-4 mr-2" />
-              Delete member
-            </Button>
+            {!current.is_root && (
+              <Button variant="destructive" className="justify-start" onClick={() => onDelete(current)}>
+                <Trash2 className="size-4 mr-2" />
+                Delete member
+              </Button>
+            )}
           </div>
 
           {familyUnit && onEditInFamily && (

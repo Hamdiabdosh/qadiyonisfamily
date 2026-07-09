@@ -17,7 +17,7 @@ import { ExportPage } from "@/components/admin/pages/ExportPage";
 import { IncompletePage } from "@/components/admin/pages/IncompletePage";
 import { KinAdminPage } from "@/components/admin/pages/KinAdminPage";
 import { FeedbacksPage } from "@/components/admin/pages/FeedbacksPage";
-import { MembersPage } from "@/components/admin/pages/MembersPage";
+import { MembersPage as FamilyPage } from "@/components/admin/pages/MembersPage";
 import { PendingPage } from "@/components/admin/pages/PendingPage";
 import { SettingsPage } from "@/components/admin/pages/SettingsPage";
 import { TranslationsPage } from "@/components/admin/pages/TranslationsPage";
@@ -34,12 +34,14 @@ import {
   fetchDismissedDuplicateGroups,
   fetchPending,
   fetchPendingSubmissions,
+  fetchWives,
   rejectFamilySubmission,
   rejectMember,
   updateApprovedFamily,
   updateFamilySubmission,
   updateMemberAlive,
 } from "@/lib/family";
+import { findIncompleteMembers } from "@/lib/admin-member-list";
 import { useAuth } from "@/lib/auth";
 
 const searchSchema = z.object({
@@ -77,14 +79,12 @@ function AdminPage() {
     queryKey: ["admin", "dismissed-duplicates"],
     queryFn: fetchDismissedDuplicateGroups,
   });
+  const { data: wives = [] } = useQuery({ queryKey: ["wives"], queryFn: fetchWives });
 
   const all = useMemo(() => [...approved, ...pending], [approved, pending]);
   const dismissedKeys = useMemo(() => new Set(dismissedDuplicateGroups), [dismissedDuplicateGroups]);
   const duplicates = useMemo(() => findDuplicates(all, dismissedKeys), [all, dismissedKeys]);
-  const incomplete = useMemo(
-    () => approved.filter((m) => !m.is_root && !m.father_id && !m.mother_id),
-    [approved],
-  );
+  const incomplete = useMemo(() => findIncompleteMembers(approved, wives), [approved, wives]);
   const exports = useMemo(() => buildExports(all), [all]);
 
   const data: AdminData = { pending, pendingSubmissions, approved, all, duplicates, incomplete };
@@ -144,6 +144,7 @@ function AdminPage() {
         toast.success("Family updated");
         qc.invalidateQueries({ queryKey: ["admin"] });
         qc.invalidateQueries({ queryKey: ["members"] });
+        qc.invalidateQueries({ queryKey: ["wives"] });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Error");
       }
@@ -219,7 +220,7 @@ function AdminBody({
     case "accounts":
       return <AccountsPage />;
     case "family":
-      return <MembersPage data={data} actions={actions} />;
+      return <FamilyPage data={data} actions={actions} />;
     case "duplicates":
       return <DuplicatesPage data={data} actions={actions} />;
     case "incomplete":

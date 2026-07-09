@@ -679,10 +679,12 @@ export function AddFamilyForm({
     queryFn: getPublicSettingsFn,
   });
 
+  const isEdit = !!initialFamilyUnit;
+  const isAdminForm = Boolean(autoApprove || initialFamilyUnit);
   const [parentsOpen, setParentsOpen] = useState(true);
-  const [childrenOpen, setChildrenOpen] = useState(true);
-  const [siblingOrderOpen, setSiblingOrderOpen] = useState(true);
-  const [submitterOpen, setSubmitterOpen] = useState(true);
+  const [childrenOpen, setChildrenOpen] = useState(isEdit && (initialFamilyUnit?.children.length ?? 0) > 0);
+  const [siblingOrderOpen, setSiblingOrderOpen] = useState(false);
+  const [submitterOpen, setSubmitterOpen] = useState(false);
 
   const [father, setFather] = useState<ParentEntry>(() => {
     if (!initialFamilyUnit?.father) return emptyParent();
@@ -755,8 +757,11 @@ export function AddFamilyForm({
     [childrenByMother],
   );
   const existingSiblings = useMemo(() => {
-    if (initialFamilyUnit || father.existingId == null) return [];
-    return sortMembersByBirthOrder(allMembers.filter((m) => m.father_id === father.existingId));
+    const fatherId = initialFamilyUnit?.father?.id ?? father.existingId;
+    if (fatherId == null) return [];
+    return sortMembersByBirthOrder(
+      allMembers.filter((m) => m.father_id === fatherId && m.is_approved),
+    );
   }, [initialFamilyUnit, father.existingId, allMembers]);
   const [orderedSiblings, setOrderedSiblings] = useState<OrderedSiblingItem[]>([]);
   const knownSubmitter = mode === "extendSelf" && !!defaultSubmitterName && !!defaultSubmitterPhone;
@@ -875,6 +880,7 @@ export function AddFamilyForm({
   const memberById = useMemo(() => buildMap(allMembers), [allMembers]);
 
   const playSectionAudio = (section: GuideAudioSection) => {
+    if (isAdminForm) return;
     parentsAudioRef.current?.stop();
     childrenAudioRef.current?.stop();
     submitterAudioRef.current?.stop();
@@ -924,7 +930,7 @@ export function AddFamilyForm({
       toast.error(t("locationRequired"));
       return;
     }
-    if (!submitterName.trim() || !submitterPhone.trim()) {
+    if (!isAdminForm && (!submitterName.trim() || !submitterPhone.trim())) {
       toast.error(t("submitterRequired"));
       return;
     }
@@ -973,7 +979,11 @@ export function AddFamilyForm({
         };
       }),
       siblingOrder: orderedSiblings.length > 0 ? siblingOrderFromItems(orderedSiblings) : undefined,
-      submitter: { name: submitterName, phone: submitterPhone, alive: true },
+      submitter: {
+        name: isAdminForm ? submitterName.trim() || "Admin" : submitterName,
+        phone: isAdminForm ? submitterPhone.trim() || "000" : submitterPhone,
+        alive: true,
+      },
       notes,
       confirmedDistinctNames: confirmedDistinct,
       ...(autoApprove ? { autoApprove: true } : {}),
@@ -1082,7 +1092,7 @@ export function AddFamilyForm({
         </div>
       ) : null}
       <div className="space-y-2">
-        {parentsAudioUrl ? (
+        {!isAdminForm && parentsAudioUrl ? (
           <SectionAudioPlayer
             ref={parentsAudioRef}
             src={parentsAudioUrl}
@@ -1091,7 +1101,9 @@ export function AddFamilyForm({
         ) : null}
         <SectionCard title={t("parents")} open={parentsOpen} onOpenChange={setParentsOpen}>
         <CardContent className="space-y-4">
-          <p className="text-xs leading-snug text-muted-foreground">{t("parentsEndogamyHint")}</p>
+          {!isAdminForm ? (
+            <p className="text-xs leading-snug text-muted-foreground">{t("parentsEndogamyHint")}</p>
+          ) : null}
           <div className="grid grid-cols-2 gap-3 items-start">
             <div className="space-y-2">
               <Label className="text-xs">🔵 {t("father")} *</Label>
@@ -1182,6 +1194,7 @@ export function AddFamilyForm({
         </SectionCard>
       </div>
 
+      {(!isAdminForm || orderedSiblings.length > 0) && (
       <div className="space-y-2">
         <SectionCard title={t("siblingOrderTitle")} open={siblingOrderOpen} onOpenChange={setSiblingOrderOpen}>
           <CardContent>
@@ -1194,9 +1207,10 @@ export function AddFamilyForm({
           </CardContent>
         </SectionCard>
       </div>
+      )}
 
       <div className="space-y-2">
-        {childrenAudioUrl ? (
+        {!isAdminForm && childrenAudioUrl ? (
           <SectionAudioPlayer
             ref={childrenAudioRef}
             src={childrenAudioUrl}
@@ -1238,6 +1252,17 @@ export function AddFamilyForm({
         </SectionCard>
       </div>
 
+      {isAdminForm ? (
+        <div className="space-y-1.5">
+          <Label className="text-sm">{t("notes")}</Label>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={t("notesPlaceholder")}
+            rows={2}
+          />
+        </div>
+      ) : (
       <div className="space-y-2">
         {submitterAudioUrl ? (
           <SectionAudioPlayer
@@ -1281,10 +1306,11 @@ export function AddFamilyForm({
         </CardContent>
         </SectionCard>
       </div>
+      )}
 
       <Button size="lg" className="w-full font-bold tracking-wide" onClick={onSubmit} disabled={submitting}>
         {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-        {autoApprove ? "Add family" : t("submitForApproval")}
+        {isAdminForm ? (isEdit ? "Save family" : "Add family") : t("submitForApproval")}
       </Button>
 
       <DuplicateNameDialog

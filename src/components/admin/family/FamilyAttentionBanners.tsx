@@ -20,7 +20,7 @@ export function FamilyAttentionBanners({ data }: Props) {
         <Alert>
           <AlertCircle className="size-4" />
           <AlertDescription>
-            {incompleteCount} member{incompleteCount === 1 ? "" : "s"} missing parent links.{" "}
+            {incompleteCount} member{incompleteCount === 1 ? "" : "s"} need parent links (not linked by marriage).{" "}
             <Link to="/admin" search={{ view: "incomplete" }} className="font-medium underline underline-offset-2">
               Fix in Incomplete
             </Link>

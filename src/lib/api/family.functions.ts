@@ -1328,6 +1328,10 @@ export const deleteMemberFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ id: z.number() }))
   .middleware([requireAdmin])
   .handler(async ({ data }) => {
+    const member = await getMemberById(data.id);
+    if (!member) throw new Error("Member not found");
+    if (member.isRoot) throw new Error("Cannot delete the root ancestor");
+
     const db = getDb();
     await db.delete(familyMembers).where(eq(familyMembers.id, data.id));
     return { ok: true };
