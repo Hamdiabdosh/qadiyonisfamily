@@ -118,11 +118,12 @@ function AdminPage() {
       }
     },
     remove: async (id) => {
-      if (!confirm("Delete this member?")) return;
       try {
         await deleteMember(id);
         toast.success("Deleted");
-        qc.invalidateQueries();
+        qc.invalidateQueries({ queryKey: ["admin"] });
+        qc.invalidateQueries({ queryKey: ["members"] });
+        qc.invalidateQueries({ queryKey: ["wives"] });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Error");
       }

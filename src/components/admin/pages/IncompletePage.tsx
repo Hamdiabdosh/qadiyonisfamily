@@ -27,7 +27,13 @@ export function IncompletePage({ data, actions }: Props) {
               <p className="font-semibold">{m.full_name}</p>
               <p className="text-xs text-muted-foreground">No father or mother linked</p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => actions.remove(m.id)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (confirm(`Delete ${m.full_name}?`)) actions.remove(m.id);
+              }}
+            >
               Remove
             </Button>
           </CardContent>
