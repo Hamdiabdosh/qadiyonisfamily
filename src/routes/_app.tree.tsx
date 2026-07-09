@@ -101,69 +101,72 @@ function TreePage() {
           description={viewMode === "graph" ? t("treeDescriptionGraph") : t("treeDescriptionFocus")}
         />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as TreeViewMode)}>
-            <TabsList>
-              <TabsTrigger value="focus" className="gap-1.5">
-                <LayoutGrid className="size-3.5" />
-                {t("treeViewFocus")}
-              </TabsTrigger>
-              <TabsTrigger value="graph" className="gap-1.5">
-                <GitBranch className="size-3.5" />
-                {t("treeViewGraph")}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <div className="flex flex-wrap gap-1.5 sm:ml-auto">
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowOut((v) => !v)}>
-              {showOut ? t("hideOutOfKin") : t("showOutOfKin")}
-            </Button>
-            {root ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => setFocus(root.id)}>
-                {t("goToRoot")}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as TreeViewMode)}>
+              <TabsList className="h-9">
+                <TabsTrigger value="focus" className="gap-1.5 px-3 text-xs sm:text-sm">
+                  <LayoutGrid className="size-3.5" />
+                  {t("treeViewFocus")}
+                </TabsTrigger>
+                <TabsTrigger value="graph" className="gap-1.5 px-3 text-xs sm:text-sm">
+                  <GitBranch className="size-3.5" />
+                  {t("treeViewGraph")}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="flex flex-wrap gap-1.5 sm:ml-auto">
+              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowOut((v) => !v)}>
+                {showOut ? t("hideOutOfKin") : t("showOutOfKin")}
               </Button>
-            ) : null}
-            {me ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => setFocus(me.id)}>
-                {t("focusOnMe")}
-              </Button>
-            ) : null}
+              {root ? (
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setFocus(root.id)}>
+                  {t("goToRoot")}
+                </Button>
+              ) : null}
+              {me ? (
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setFocus(me.id)}>
+                  {t("focusOnMe")}
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t("treeSearchPlaceholder")}
-            className="pl-10"
-          />
-        </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={t("treeSearchPlaceholder")}
+              className="h-9 pl-10"
+            />
+          </div>
 
-        {results.length > 0 ? (
-          <div className="space-y-2 rounded-lg border p-2">
-            {results.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
-                onClick={() => {
-                  setSelected(m);
-                  setFocus(m.id);
-                }}
-              >
-                <MemberAvatar name={m.full_name} photoUrl={m.photo_url} size="sm" />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{m.full_name}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
-                    {disambiguatorLabel(m, byId)}
+          {results.length > 0 ? (
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border bg-card/60 p-1.5 shadow-sm">
+              {results.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                  onClick={() => {
+                    setSelected(m);
+                    setFocus(m.id);
+                    setQ("");
+                  }}
+                >
+                  <MemberAvatar name={m.full_name} photoUrl={m.photo_url} size="sm" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{m.full_name}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      {disambiguatorLabel(m, byId)}
+                    </span>
                   </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         {viewMode === "focus" ? (
           <TreeFocusView members={displayMembers} wives={wives} focusedId={focusId} onFocusChange={setFocus} />
