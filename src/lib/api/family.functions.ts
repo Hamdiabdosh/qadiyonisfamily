@@ -12,11 +12,53 @@ import { buildMap, chainReachesRoot, fatherChain, motherChain } from "@/lib/line
 import { computeLineageFields } from "@/lib/lineage-compute.server";
 import { recomputeMemberLineage } from "@/lib/lineage-recompute.server";
 import { isConfirmedDistinctName } from "@/lib/submission-validate";
+import { generateInviteToken } from "@/lib/invite-token";
 import { saveMemberPhoto } from "@/lib/uploads.server";
 import {
   buildOrderedChildDrafts,
   SIBLING_BIRTH_ORDER_SPACING,
 } from "@/lib/sibling-order";
+
+async function ensureInviteToken(memberId: number): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: familyMembers.id, inviteToken: familyMembers.inviteToken, isApproved: familyMembers.isApproved })
+    .from(familyMembers)
+    .where(eq(familyMembers.id, memberId))
+    .limit(1);
+  if (!row) throw new Error("Member not found");
+  if (row.inviteToken) return row.inviteToken;
+  const token = generateInviteToken();
+  await db
+    .update(familyMembers)
+    .set({ inviteToken: token, updatedAt: new Date() })
+    .where(eq(familyMembers.id, memberId));
+  return token;
+}
+
+async function ensureInviteTokensForIds(ids: number[]): Promise<void> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  for (const id of unique) {
+    try {
+      await ensureInviteToken(id);
+    } catch {
+      // skip missing rows
+    }
+  }
+}
+
+async function applyOptionalPhoto(
+  memberId: number,
+  photoBase64?: string | null,
+  photoMimeType?: string | null,
+) {
+  if (!photoBase64?.trim() || !photoMimeType?.trim()) return;
+  const filename = await saveMemberPhoto(photoBase64, photoMimeType);
+  await getDb()
+    .update(familyMembers)
+    .set({ photoUrl: filename, updatedAt: new Date() })
+    .where(eq(familyMembers.id, memberId));
+}
 
 const parentSchema = z.object({
   name: z.string(),
@@ -25,6 +67,8 @@ const parentSchema = z.object({
   inKin: z.boolean(),
   kinSide: z.enum(["father", "mother"]).nullable(),
   kinAnchorId: z.number().nullable(),
+  photoBase64: z.string().nullable().optional(),
+  photoMimeType: z.string().nullable().optional(),
 });
 
 const submitPayloadSchema = z.object({
@@ -39,6 +83,8 @@ const submitPayloadSchema = z.object({
       birthOrder: z.number().int().min(1),
       motherIndex: z.number().int().min(0).optional().default(0),
       existingId: z.number().nullable().optional(),
+      photoBase64: z.string().nullable().optional(),
+      photoMimeType: z.string().nullable().optional(),
     }),
   ),
   submitter: z.object({
@@ -263,7 +309,7 @@ async function assertSubmitFamilyValid(data: z.infer<typeof submitPayloadSchema>
   }
 
   const byId = await loadMembersByIdMap();
-  if (!validateNewKinLink(data.father, byId)) {
+  if (data.father.name.trim() && !validateNewKinLink(data.father, byId)) {
     throw new Error("Father kin link does not reach the root ancestor.");
   }
   for (const m of namedMothers) {
@@ -277,7 +323,9 @@ async function assertSubmitFamilyValid(data: z.infer<typeof submitPayloadSchema>
   for (const m of data.mothers) if (m.existingId) linkedIds.add(m.existingId);
   for (const c of data.children) if (c.existingId) linkedIds.add(c.existingId);
 
-  await assertNameAvailable(data.father.name, data.father.existingId, "father", linkedIds, data.confirmedDistinctNames);
+  if (data.father.name.trim()) {
+    await assertNameAvailable(data.father.name, data.father.existingId, "father", linkedIds, data.confirmedDistinctNames);
+  }
   for (const m of data.mothers) {
     await assertNameAvailable(m.name, m.existingId, "mother", linkedIds, data.confirmedDistinctNames);
   }
@@ -910,6 +958,7 @@ export const approveFamilySubmissionFn = createServerFn({ method: "POST" })
           updatedAt: new Date(),
         })
         .where(inArray(familyMembers.id, ids));
+      await ensureInviteTokensForIds(ids);
       return { ok: true };
     }
 
@@ -937,6 +986,7 @@ export const approveFamilySubmissionFn = createServerFn({ method: "POST" })
         .where(inArray(familyMembers.id, allIds));
 
       for (const id of allIds) await recomputeMemberLineage(id);
+      await ensureInviteTokensForIds(allIds);
     }
 
     await db
@@ -1077,6 +1127,9 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
         isApproved: autoApprove,
         approvedBy: autoApprove ? context.userId : null,
       });
+      if (!parent.existingId) {
+        await applyOptionalPhoto(row.id, parent.photoBase64, parent.photoMimeType);
+      }
       if (track === "father") memberIds.fatherId = row.id;
       else memberIds.motherIds.push(row.id);
       return row.id;
@@ -1166,6 +1219,7 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
             tx,
           );
           memberIds.childIds.push(row.id);
+          await applyOptionalPhoto(row.id, kid.photoBase64, kid.photoMimeType);
         }
       });
     } else {
@@ -1203,6 +1257,7 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
           approvedBy: autoApprove ? context.userId : null,
         });
         memberIds.childIds.push(row.id);
+        await applyOptionalPhoto(row.id, kid.photoBase64, kid.photoMimeType);
       }
     }
 
@@ -1220,6 +1275,7 @@ export const submitFamilyFn = createServerFn({ method: "POST" })
         (id): id is number => id != null,
       );
       for (const id of allIds) await recomputeMemberLineage(id);
+      await ensureInviteTokensForIds(allIds);
     } else {
       const approvedRows = await db
         .select()
@@ -1255,6 +1311,7 @@ export const approveMemberFn = createServerFn({ method: "POST" })
       })
       .where(eq(familyMembers.id, data.id));
     await recomputeMemberLineage(data.id);
+    await ensureInviteToken(data.id);
     return { ok: true };
   });
 
@@ -1421,4 +1478,191 @@ export const getAppSettingsFn = createServerFn({ method: "GET" })
     const db = getDb();
     const rows = await db.select().from(appSettings);
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  });
+
+export type InvitePublic = {
+  token: string;
+  memberId: number;
+  fullName: string;
+  gender: "male" | "female";
+  photoUrl: string | null;
+  isAlive: boolean;
+};
+
+export const getInviteFn = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ token: z.string().min(8) }))
+  .handler(async ({ data }): Promise<InvitePublic | null> => {
+    const db = getDb();
+    const [row] = await db
+      .select({
+        id: familyMembers.id,
+        fullName: familyMembers.fullName,
+        gender: familyMembers.gender,
+        photoUrl: familyMembers.photoUrl,
+        isAlive: familyMembers.isAlive,
+        inviteToken: familyMembers.inviteToken,
+        isApproved: familyMembers.isApproved,
+      })
+      .from(familyMembers)
+      .where(eq(familyMembers.inviteToken, data.token))
+      .limit(1);
+    if (!row?.inviteToken || !row.isApproved) return null;
+    return {
+      token: row.inviteToken,
+      memberId: row.id,
+      fullName: row.fullName,
+      gender: row.gender,
+      photoUrl: row.photoUrl,
+      isAlive: row.isAlive,
+    };
+  });
+
+export const claimInviteFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ token: z.string().min(8) }))
+  .middleware([requireAuth])
+  .handler(async ({ data, context }) => {
+    const db = getDb();
+    const [member] = await db
+      .select({
+        id: familyMembers.id,
+        isApproved: familyMembers.isApproved,
+        inviteToken: familyMembers.inviteToken,
+      })
+      .from(familyMembers)
+      .where(eq(familyMembers.inviteToken, data.token))
+      .limit(1);
+    if (!member?.inviteToken || !member.isApproved) throw new Error("Invite not found");
+
+    const [user] = await db
+      .select({ id: users.id, memberId: users.memberId, accountStatus: users.accountStatus })
+      .from(users)
+      .where(eq(users.id, context.userId))
+      .limit(1);
+    if (!user) throw new Error("Unauthorized");
+    if (user.accountStatus !== "approved") throw new Error("Account pending approval");
+
+    if (user.memberId != null && user.memberId !== member.id) {
+      throw new Error("Your account is already linked to a different family member");
+    }
+
+    if (user.memberId !== member.id) {
+      await db.update(users).set({ memberId: member.id }).where(eq(users.id, user.id));
+    }
+
+    return { ok: true, memberId: member.id };
+  });
+
+export const getMyInviteLinkFn = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    const db = getDb();
+    const [user] = await db
+      .select({ memberId: users.memberId })
+      .from(users)
+      .where(eq(users.id, context.userId))
+      .limit(1);
+    if (!user?.memberId) return { token: null as string | null, path: null as string | null };
+
+    const [member] = await db
+      .select({ isApproved: familyMembers.isApproved })
+      .from(familyMembers)
+      .where(eq(familyMembers.id, user.memberId))
+      .limit(1);
+    if (!member?.isApproved) return { token: null, path: null };
+
+    const token = await ensureInviteToken(user.memberId);
+    return { token, path: `/invite/${token}` };
+  });
+
+export const getMemberInviteLinkFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ memberId: z.number() }))
+  .middleware([requireAdmin])
+  .handler(async ({ data }) => {
+    const member = await getMemberById(data.memberId);
+    if (!member) throw new Error("Member not found");
+    if (!member.isApproved) throw new Error("Member is not approved yet");
+    const token = await ensureInviteToken(data.memberId);
+    return { token, path: `/invite/${token}` };
+  });
+
+export const regenerateMemberInviteFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ memberId: z.number() }))
+  .middleware([requireAdmin])
+  .handler(async ({ data }) => {
+    const member = await getMemberById(data.memberId);
+    if (!member) throw new Error("Member not found");
+    if (!member.isApproved) throw new Error("Member is not approved yet");
+    const token = generateInviteToken();
+    await getDb()
+      .update(familyMembers)
+      .set({ inviteToken: token, updatedAt: new Date() })
+      .where(eq(familyMembers.id, data.memberId));
+    return { token, path: `/invite/${token}` };
+  });
+
+export const updateMyProfileFn = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      phone: z.string().optional(),
+      fullName: z.string().optional(),
+      currentLocation: z.string().nullable().optional(),
+      birthYear: z.number().int().min(1800).max(2100).nullable().optional(),
+      deathYear: z.number().int().min(1800).max(2100).nullable().optional(),
+      isAlive: z.boolean().optional(),
+    }),
+  )
+  .middleware([requireAuth])
+  .handler(async ({ data, context }) => {
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, context.userId)).limit(1);
+    if (!user) throw new Error("Unauthorized");
+    if (user.accountStatus !== "approved") throw new Error("Account pending approval");
+    if (!user.memberId) throw new Error("Link your family profile first");
+
+    const member = await getMemberById(user.memberId);
+    if (!member) throw new Error("Member not found");
+
+    const userPatch: Partial<typeof users.$inferInsert> = {};
+    if (data.phone !== undefined) {
+      const phone = data.phone.trim();
+      if (!phone) throw new Error("Phone is required");
+      const [other] = await db.select({ id: users.id }).from(users).where(eq(users.phone, phone)).limit(1);
+      if (other && other.id !== user.id) throw new Error("Phone already in use");
+      userPatch.phone = phone;
+    }
+
+    const memberPatch: Partial<typeof familyMembers.$inferInsert> = { updatedAt: new Date() };
+
+    if (data.fullName !== undefined) {
+      const name = data.fullName.trim();
+      if (!name) throw new Error("Name is required");
+      const [dup] = await db
+        .select({ id: familyMembers.id })
+        .from(familyMembers)
+        .where(and(eq(familyMembers.fullName, name), eq(familyMembers.isApproved, true)))
+        .limit(1);
+      if (dup && dup.id !== member.id) throw new Error("Another member already has this name");
+      memberPatch.fullName = name;
+      userPatch.fullName = name;
+    }
+
+    if (data.currentLocation !== undefined) memberPatch.currentLocation = data.currentLocation?.trim() || null;
+    if (data.birthYear !== undefined) memberPatch.birthYear = data.birthYear;
+    if (data.isAlive !== undefined) {
+      if (member.isRoot) throw new Error("Cannot change alive status of the root ancestor");
+      memberPatch.isAlive = data.isAlive;
+      if (data.isAlive) memberPatch.deathYear = null;
+    }
+    if (data.deathYear !== undefined) {
+      const alive = data.isAlive ?? member.isAlive;
+      if (!alive) memberPatch.deathYear = data.deathYear;
+    }
+
+    if (Object.keys(userPatch).length > 0) {
+      await db.update(users).set(userPatch).where(eq(users.id, user.id));
+    }
+    await db.update(familyMembers).set(memberPatch).where(eq(familyMembers.id, member.id));
+
+    const updated = await getMemberById(member.id);
+    return { ok: true, member: updated ? toMember(updated) : null };
   });

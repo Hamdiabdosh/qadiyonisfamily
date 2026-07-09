@@ -73,12 +73,15 @@ import {
 } from "@/components/LocationSelector";
 import { SectionAudioPlayer, type SectionAudioHandle } from "@/components/SectionAudioPlayer";
 import { getPublicSettingsFn } from "@/lib/api/content.functions";
+import { readFileAsBase64 } from "@/lib/file-base64";
 
 export type GuideAudioSection = "parents" | "children" | "submitter";
 
 type AliveT = "alive" | "dead";
 type AliveChoice = AliveT | null;
 type Child = FormChildEntry;
+type PhotoPick = { base64: string; mimeType: string } | null;
+
 type ParentEntry = {
   name: string;
   alive: AliveChoice;
@@ -86,12 +89,13 @@ type ParentEntry = {
   inKin: boolean | null;
   kinSide: KinLinkSide | null;
   kinAnchorId: number | null;
+  photo: PhotoPick;
 };
 
 const compactNameClass = "h-8 text-xs px-2 py-1 rounded-lg";
 
 function emptyParent(): ParentEntry {
-  return { name: "", alive: null, existingId: null, inKin: null, kinSide: null, kinAnchorId: null };
+  return { name: "", alive: null, existingId: null, inKin: null, kinSide: null, kinAnchorId: null, photo: null };
 }
 
 function hasAliveChosen(alive: AliveChoice): alive is AliveT {
@@ -117,7 +121,15 @@ function parentToPayload(p: ParentEntry, byId: Map<number, Member>) {
     inKin: p.inKin === true,
     kinSide: p.inKin ? p.kinSide : null,
     kinAnchorId: p.inKin ? p.kinAnchorId : null,
+    photoBase64: p.photo?.base64 ?? null,
+    photoMimeType: p.photo?.mimeType ?? null,
   };
+}
+
+async function pickPhoto(file: File | undefined): Promise<PhotoPick> {
+  if (!file) return null;
+  const base64 = await readFileAsBase64(file);
+  return { base64, mimeType: file.type || "image/jpeg" };
 }
 
 function formatStoredLineage(path: string) {
@@ -675,12 +687,13 @@ export function AddFamilyForm({
   const [father, setFather] = useState<ParentEntry>(() => {
     if (!initialFamilyUnit?.father) return emptyParent();
     const f = initialFamilyUnit.father;
-    return { name: f.full_name, alive: f.is_alive ? "alive" : "dead", existingId: f.id, inKin: true, kinSide: null, kinAnchorId: null };
+    return { name: f.full_name, alive: f.is_alive ? "alive" : "dead", existingId: f.id, inKin: true, kinSide: null, kinAnchorId: null, photo: null };
   });
   const [mothers, setMothers] = useState<ParentEntry[]>(() => {
     if (!initialFamilyUnit || initialFamilyUnit.mothers.length === 0) return [emptyParent()];
-    return initialFamilyUnit.mothers.map((m) => ({ name: m.full_name, alive: m.is_alive ? "alive" : "dead", existingId: m.id, inKin: true, kinSide: null, kinAnchorId: null }));
+    return initialFamilyUnit.mothers.map((m) => ({ name: m.full_name, alive: m.is_alive ? "alive" : "dead", existingId: m.id, inKin: true, kinSide: null, kinAnchorId: null, photo: null }));
   });
+  const [childPhotos, setChildPhotos] = useState<Record<string, PhotoPick>>({});
   const [locationSelection, setLocationSelection] = useState<LocationSelection>(() => {
     if (!initialFamilyUnit?.location) return { ...DEFAULT_LOCATION };
     return { ...DEFAULT_LOCATION, region: initialFamilyUnit.location };
@@ -806,17 +819,38 @@ export function AddFamilyForm({
   useEffect(() => {
     if (mode !== "extendSelf" || !selfMemberId) return;
     const me = allMembers.find((m) => m.id === selfMemberId);
-    if (!me || me.gender !== "male") return;
-    setFather((prev) => {
-      if (prev.existingId || prev.name.trim()) return prev;
-      return {
+    if (!me) return;
+    if (me.gender === "male") {
+      setFather((prev) => {
+        if (prev.existingId || prev.name.trim()) return prev;
+        return {
+          name: me.full_name,
+          alive: me.is_alive ? "alive" : "dead",
+          existingId: me.id,
+          inKin: true,
+          kinSide: null,
+          kinAnchorId: null,
+          photo: null,
+        };
+      });
+      return;
+    }
+    // Female: prefill self as first mother
+    setMothers((prev) => {
+      if (prev.some((m) => m.existingId === me.id)) return prev;
+      const selfMother: ParentEntry = {
         name: me.full_name,
         alive: me.is_alive ? "alive" : "dead",
         existingId: me.id,
         inKin: true,
         kinSide: null,
         kinAnchorId: null,
+        photo: null,
       };
+      if (!prev[0]?.name.trim() && prev[0]?.existingId == null) {
+        return [selfMother, ...prev.slice(1)];
+      }
+      return [selfMother, ...prev];
     });
   }, [mode, selfMemberId, allMembers]);
 
@@ -835,6 +869,7 @@ export function AddFamilyForm({
     setSubmitterOpen(true);
     setConfirmedDistinctNames([]);
     setDuplicateDialog(null);
+    setChildPhotos({});
   };
 
   const memberById = useMemo(() => buildMap(allMembers), [allMembers]);
@@ -859,11 +894,14 @@ export function AddFamilyForm({
     const formNamedMothers = formMothers.filter((m) => m.name.trim());
     const formNamedChildren = flattenChildrenBuckets(formChildrenByMother);
 
-    if (!formFather.name.trim()) {
+    const selfMember = selfMemberId ? allMembers.find((m) => m.id === selfMemberId) : null;
+    const femaleExtend = mode === "extendSelf" && selfMember?.gender === "female";
+
+    if (!formFather.name.trim() && !femaleExtend) {
       toast.error(t("fatherNameRequired"));
       return;
     }
-    if (!hasAliveChosen(formFather.alive)) {
+    if (formFather.name.trim() && !hasAliveChosen(formFather.alive)) {
       toast.error(t("aliveStatusRequired"));
       return;
     }
@@ -908,7 +946,7 @@ export function AddFamilyForm({
       toast.error(error instanceof Error ? error.message : t("birthOrderRequired"));
       return;
     }
-    if (!validateParentKin(formFather, memberByIdSubmit)) {
+    if (formFather.name.trim() && !validateParentKin(formFather, memberByIdSubmit)) {
       toast.error(formFather.inKin === true && formFather.kinAnchorId ? t("kinPathInvalid") : t("parentKinRequired"));
       return;
     }
@@ -926,7 +964,14 @@ export function AddFamilyForm({
       father: parentToPayload(formFather, memberByIdSubmit),
       mothers: formNamedMothers.map((m) => parentToPayload(m, memberByIdSubmit)),
       location,
-      children: assignSequentialBirthOrder(orderedDrafts).map(({ key: _key, ...child }) => child),
+      children: assignSequentialBirthOrder(orderedDrafts).map(({ key, ...child }) => {
+        const photo = childPhotos[key] ?? null;
+        return {
+          ...child,
+          photoBase64: photo?.base64 ?? null,
+          photoMimeType: photo?.mimeType ?? null,
+        };
+      }),
       siblingOrder: orderedSiblings.length > 0 ? siblingOrderFromItems(orderedSiblings) : undefined,
       submitter: { name: submitterName, phone: submitterPhone, alive: true },
       notes,
@@ -1028,6 +1073,7 @@ export function AddFamilyForm({
                 inKin: true,
                 kinSide: null,
                 kinAnchorId: null,
+                photo: null,
               })
             }
           >
@@ -1059,6 +1105,20 @@ export function AddFamilyForm({
                 showLineLabel
                 isEditMode={!!initialFamilyUnit}
               />
+              {!father.existingId && father.name.trim() ? (
+                <label className="block text-[10px] text-muted-foreground">
+                  {t("addPhoto")}
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    className="mt-1 h-8 text-xs"
+                    onChange={async (e) => {
+                      const photo = await pickPhoto(e.target.files?.[0]);
+                      setFather((p) => ({ ...p, photo }));
+                    }}
+                  />
+                </label>
+              ) : null}
             </div>
             <div className="space-y-3">
               {mothers.map((mo, i) => (
@@ -1081,6 +1141,20 @@ export function AddFamilyForm({
                     showLineLabel
                     isEditMode={!!initialFamilyUnit}
                   />
+                  {!mo.existingId && mo.name.trim() ? (
+                    <label className="block text-[10px] text-muted-foreground">
+                      {t("addPhoto")}
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        className="mt-1 h-8 text-xs"
+                        onChange={async (e) => {
+                          const photo = await pickPhoto(e.target.files?.[0]);
+                          setMothers((p) => p.map((m, x) => (x === i ? { ...m, photo } : m)));
+                        }}
+                      />
+                    </label>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -1139,6 +1213,27 @@ export function AddFamilyForm({
             activeMotherTab={activeMotherTab}
             onActiveMotherTabChange={setActiveMotherTab}
           />
+          {orderedSiblings.some((s) => s.kind === "draft") ? (
+            <div className="mt-3 space-y-2 rounded-lg border border-dashed p-2">
+              <p className="text-[10px] text-muted-foreground">{t("addPhoto")} (online only)</p>
+              {orderedSiblings
+                .filter((s): s is Extract<typeof s, { kind: "draft" }> => s.kind === "draft")
+                .map((s) => (
+                  <label key={s.draft.key} className="flex items-center gap-2 text-xs">
+                    <span className="min-w-0 flex-1 truncate">{s.draft.name}</span>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      className="h-8 max-w-[160px] text-xs"
+                      onChange={async (e) => {
+                        const photo = await pickPhoto(e.target.files?.[0]);
+                        setChildPhotos((prev) => ({ ...prev, [s.draft.key]: photo }));
+                      }}
+                    />
+                  </label>
+                ))}
+            </div>
+          ) : null}
         </CardContent>
         </SectionCard>
       </div>

@@ -18,9 +18,11 @@ import {
   approveAccountFn,
   getAccountsAdminFn,
   rejectAccountFn,
+  setUserMemberFn,
   setUserRoleFn,
   type AdminAccountRow,
 } from "@/lib/api/auth.functions";
+import { fetchAllMembers } from "@/lib/family";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -88,12 +90,23 @@ export function AccountsPage() {
     queryKey: ["admin", "accounts"],
     queryFn: getAccountsAdminFn,
   });
+  const { data: members = [] } = useQuery({
+    queryKey: ["members", "approved"],
+    queryFn: () => fetchAllMembers(false),
+  });
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [sort, setSort] = useState<SortKey>("newest");
   const [roleSavingId, setRoleSavingId] = useState<string | null>(null);
+  const [memberSavingId, setMemberSavingId] = useState<string | null>(null);
+
+  const memberOptions = useMemo(
+    () =>
+      [...members].sort((a, b) => a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" })),
+    [members],
+  );
 
   const filtered = useMemo(
     () => filterAndSortAccounts(accounts, query, statusFilter, roleFilter, sort),
@@ -133,6 +146,19 @@ export function AccountsPage() {
       toast.error(e instanceof Error ? e.message : "Could not change role");
     } finally {
       setRoleSavingId(null);
+    }
+  };
+
+  const linkMember = async (userId: string, memberId: number | null) => {
+    setMemberSavingId(userId);
+    try {
+      await setUserMemberFn({ data: { userId, memberId } });
+      toast.success(memberId == null ? "Unlinked from family member" : "Linked to family member");
+      invalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not link member");
+    } finally {
+      setMemberSavingId(null);
     }
   };
 
@@ -252,30 +278,54 @@ export function AccountsPage() {
                 ) : null}
 
                 {a.accountStatus === "approved" ? (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Role</Label>
-                    <Select
-                      value={a.role}
-                      disabled={roleSavingId === a.id}
-                      onValueChange={(v) => void changeRole(a.id, v as "admin" | "member")}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {a.id === user?.id ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        You cannot demote yourself. Sign in again after changing another user&apos;s role.
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-muted-foreground">
-                        Admins can access the dashboard. Members use the family app only.
-                      </p>
-                    )}
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Linked family member</Label>
+                      <Select
+                        value={a.memberId != null ? String(a.memberId) : "none"}
+                        disabled={memberSavingId === a.id}
+                        onValueChange={(v) =>
+                          void linkMember(a.id, v === "none" ? null : Number(v))
+                        }
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Not linked" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not linked</SelectItem>
+                          {memberOptions.map((m) => (
+                            <SelectItem key={m.id} value={String(m.id)}>
+                              {m.full_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Role</Label>
+                      <Select
+                        value={a.role}
+                        disabled={roleSavingId === a.id}
+                        onValueChange={(v) => void changeRole(a.id, v as "admin" | "member")}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="member">Member</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {a.id === user?.id ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          You cannot demote yourself. Sign in again after changing another user&apos;s role.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">
+                          Admins can access the dashboard. Members use the family app only.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ) : null}
               </CardContent>

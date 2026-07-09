@@ -159,6 +159,16 @@ export async function runLegacyMigrations(existingSql?: Sql): Promise<void> {
       "family_members.photo_url",
       `ALTER TABLE family_members ADD COLUMN IF NOT EXISTS photo_url text`,
     );
+    await runStatement(
+      sql,
+      "family_members.invite_token",
+      `ALTER TABLE family_members ADD COLUMN IF NOT EXISTS invite_token text`,
+    );
+    await runStatement(
+      sql,
+      "family_members.invite_token unique",
+      `CREATE UNIQUE INDEX IF NOT EXISTS family_members_invite_token_unique ON family_members (invite_token)`,
+    );
   }
 
   await runStatement(

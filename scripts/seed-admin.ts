@@ -1,6 +1,10 @@
 /**
- * Create or reset the default admin account.
+ * Create the default admin account (idempotent on deploy).
  * Usage: bun run db:seed-admin
+ *        bun run db:seed-admin -- --reset   # force password reset
+ *
+ * On first create: uses ADMIN_PASSWORD env if set, else default bootstrap password.
+ * If admin already exists: only ensures role + admin_email — does NOT reset password.
  */
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -13,33 +17,47 @@ import { ensureDatabaseUrl, requireEnv } from "./database-url";
 
 export const ADMIN_EMAIL = "admin@qadiyonis.raafat.site";
 export const ADMIN_PHONE = "0931947040";
-export const ADMIN_PASSWORD = "12341235";
+export const ADMIN_PASSWORD_DEFAULT = "12341235";
+/** @deprecated use ADMIN_PASSWORD_DEFAULT */
+export const ADMIN_PASSWORD = ADMIN_PASSWORD_DEFAULT;
 export const ADMIN_NAME = "Abdulhamid Teweleda Abdosh";
 
-export async function seedAdmin(): Promise<void> {
+function bootstrapPassword(): string {
+  return process.env.ADMIN_PASSWORD?.trim() || ADMIN_PASSWORD_DEFAULT;
+}
+
+export async function seedAdmin(opts?: { resetPassword?: boolean }): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
 
   const sql = pg(url, { max: 1 });
   const db = drizzle(sql, { schema });
+  const resetPassword = opts?.resetPassword === true;
 
   try {
-    const passwordHash = await hashPassword(ADMIN_PASSWORD);
-
     let [user] = await db.select().from(users).where(eq(users.email, ADMIN_EMAIL)).limit(1);
+    let created = false;
 
     if (user) {
-      await db
-        .update(users)
-        .set({
-          passwordHash,
-          accountStatus: "approved",
-          fullName: ADMIN_NAME,
-          phone: ADMIN_PHONE,
-        })
-        .where(eq(users.id, user.id));
-      console.log("Admin user exists — password and profile updated.");
+      if (resetPassword) {
+        await db
+          .update(users)
+          .set({
+            passwordHash: await hashPassword(bootstrapPassword()),
+            accountStatus: "approved",
+            fullName: ADMIN_NAME,
+            phone: ADMIN_PHONE,
+          })
+          .where(eq(users.id, user.id));
+        console.log("Admin user exists — password reset (--reset).");
+      } else {
+        if (user.accountStatus !== "approved") {
+          await db.update(users).set({ accountStatus: "approved" }).where(eq(users.id, user.id));
+        }
+        console.log("Admin user exists — password left unchanged.");
+      }
     } else {
+      const passwordHash = await hashPassword(bootstrapPassword());
       [user] = await db
         .insert(users)
         .values({
@@ -50,6 +68,7 @@ export async function seedAdmin(): Promise<void> {
           accountStatus: "approved",
         })
         .returning();
+      created = true;
       console.log("✓ Created admin user");
     }
 
@@ -64,10 +83,12 @@ export async function seedAdmin(): Promise<void> {
       .onConflictDoUpdate({ target: appSettings.key, set: { value: ADMIN_EMAIL } });
 
     console.log("✓ Admin ready");
-    console.log(`  Email:    ${ADMIN_EMAIL}`);
-    console.log(`  Phone:    ${ADMIN_PHONE}`);
-    console.log(`  Password: ${ADMIN_PASSWORD}`);
+    console.log(`  Email:     ${ADMIN_EMAIL}`);
+    console.log(`  Phone:     ${ADMIN_PHONE}`);
     console.log(`  Dashboard: /admin`);
+    if (created || resetPassword) {
+      console.log(`  Password:  ${bootstrapPassword()} (set ADMIN_PASSWORD to override)`);
+    }
   } finally {
     await sql.end({ timeout: 1 });
   }
@@ -76,7 +97,7 @@ export async function seedAdmin(): Promise<void> {
 async function main() {
   ensureDatabaseUrl();
   requireEnv("SESSION_SECRET");
-  await seedAdmin();
+  await seedAdmin({ resetPassword: process.argv.includes("--reset") });
 }
 
 if (import.meta.main) {

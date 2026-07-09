@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Skull, Trash2, UserCheck, Pencil } from "lucide-react";
+import { Plus, Search, Skull, Trash2, UserCheck, Pencil, Link2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { AddFamilyForm } from "@/components/AddFamilyForm";
 import { MemberPhotoUpload } from "@/components/MemberPhotoUpload";
@@ -34,6 +35,8 @@ import {
   type FamilySort,
   type FamilyUnit,
 } from "@/lib/admin-family-units";
+import { getMemberInviteLinkFn } from "@/lib/api/family.functions";
+import { APP_URL } from "@/lib/app-url";
 import { fetchWives, type Member } from "@/lib/family";
 import type { AdminActions, AdminData } from "../types";
 
@@ -189,6 +192,24 @@ function FamilyUnitCard({
                   <MemberAvatar name={m!.full_name} photoUrl={m!.photo_url} size="xs" />
                 </Button>
               </MemberPhotoDialog>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                title="Copy invite link"
+                onClick={async () => {
+                  try {
+                    const { path } = await getMemberInviteLinkFn({ data: { memberId: m!.id } });
+                    const url = `${typeof window !== "undefined" ? window.location.origin : APP_URL}${path}`;
+                    await navigator.clipboard.writeText(url);
+                    toast.success("Invite link copied");
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Could not get invite link");
+                  }
+                }}
+              >
+                <Link2 className="size-3" />
+              </Button>
               {!m!.is_root && (
                 <Button
                   size="sm"

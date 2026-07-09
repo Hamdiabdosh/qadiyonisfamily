@@ -13,6 +13,8 @@ const TITLES: Record<AdminView, { title: string; description: string }> = {
   accounts: { title: "Accounts", description: "Search members, approve requests, and manage admin or member roles" },
   family: { title: "Family", description: "Manage approved family members" },
   duplicates: { title: "Duplicate Detection", description: "Review same-name groups and dismiss legitimate matches" },
+  incomplete: { title: "Incomplete", description: "Approved members missing father or mother links" },
+  export: { title: "Export", description: "Download family data as CSV, JSON, or GEDCOM" },
   tree: { title: "Family Tree", description: "Visual canvas of the full lineage" },
   kin: { title: "Kin Directory", description: "Kin page layout and member directory settings" },
   explore: { title: "Explore", description: "Posts and gallery shared with kin" },

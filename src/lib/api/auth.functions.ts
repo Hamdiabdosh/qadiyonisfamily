@@ -131,6 +131,7 @@ export type AdminAccountRow = {
   email: string | null;
   phone: string | null;
   fullName: string | null;
+  memberId: number | null;
   accountStatus: "pending" | "approved" | "rejected";
   role: "admin" | "member";
   createdAt: Date;
@@ -156,6 +157,7 @@ export const getAccountsAdminFn = createServerFn({ method: "GET" })
       email: user.email,
       phone: user.phone,
       fullName: user.fullName,
+      memberId: user.memberId,
       accountStatus: user.accountStatus,
       role: roleByUser.get(user.id) ?? "member",
       createdAt: user.createdAt,

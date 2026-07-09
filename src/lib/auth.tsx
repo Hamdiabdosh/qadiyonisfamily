@@ -16,6 +16,8 @@ type Ctx = {
   signIn: (identifier: string, password: string) => Promise<{ error: string | null }>;
   register: (fullName: string, phone: string, password: string) => Promise<{ error: string | null }>;
   linkMember: (memberId?: number) => Promise<{ error: string | null; memberId: number | null }>;
+  setLinkedMemberId: (memberId: number | null) => void;
+  refreshSession: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 const AuthCtx = createContext<Ctx | null>(null);
@@ -78,6 +80,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setLinkedMemberId = (memberId: number | null) => {
+    setUser((prev) => (prev ? { ...prev, memberId } : prev));
+  };
+
+  const refreshSession = async () => {
+    const { user: u, isAdmin: admin } = await loadSession();
+    setUser(u);
+    setIsAdmin(admin);
+  };
+
   const signOut = async () => {
     localStorage.removeItem(TOKEN_COOKIE);
     setUser(null);
@@ -85,7 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthCtx.Provider value={{ user, isAdmin, loading, signIn, register, linkMember, signOut }}>
+    <AuthCtx.Provider
+      value={{ user, isAdmin, loading, signIn, register, linkMember, setLinkedMemberId, refreshSession, signOut }}
+    >
       {children}
     </AuthCtx.Provider>
   );

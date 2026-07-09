@@ -100,6 +100,8 @@ function AuthPage() {
     const target = search.redirect ?? (isAdmin ? "/admin" : "/home");
     if (target.startsWith("/admin")) {
       nav({ to: "/admin", search: { view: "dashboard" } });
+    } else if (target.startsWith("/invite/")) {
+      window.location.assign(target);
     } else {
       nav({ to: target as "/home" });
     }

@@ -6,6 +6,8 @@ export type AdminView =
   | "accounts"
   | "family"
   | "duplicates"
+  | "incomplete"
+  | "export"
   | "tree"
   | "feedbacks"
   | "announcements"

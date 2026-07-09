@@ -29,7 +29,7 @@ function AddFamilyPage() {
     enabled: !!user?.memberId,
   });
   const selfMember = members.find((m) => m.id === user?.memberId) ?? null;
-  const mode = selfMember?.gender === "male" ? "extendSelf" : "newFamily";
+  const mode = selfMember ? "extendSelf" : "newFamily";
 
   return (
     <div>
@@ -38,7 +38,7 @@ function AddFamilyPage() {
         <PageTitleRow title={t("addFamily")} className="mb-2" />
         <AddFamilyForm
           mode={mode}
-          selfMemberId={selfMember?.gender === "male" ? user?.memberId ?? null : null}
+          selfMemberId={selfMember?.id ?? null}
           defaultSubmitterName={user?.fullName ?? ""}
           defaultSubmitterPhone={user?.phone ?? ""}
         />

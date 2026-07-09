@@ -1,9 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  AlertCircle,
   Bell,
   CheckCircle,
   Compass,
   Contact,
+  Copy,
+  Download,
   GitBranch,
   Languages,
   LayoutDashboard,
@@ -40,6 +43,9 @@ const NAV: { view: AdminView; label: string; icon: typeof LayoutDashboard }[] = 
   { view: "approval", label: "Approval", icon: CheckCircle },
   { view: "accounts", label: "Accounts", icon: UserPlus },
   { view: "family", label: "Family", icon: Users },
+  { view: "duplicates", label: "Duplicates", icon: Copy },
+  { view: "incomplete", label: "Incomplete", icon: AlertCircle },
+  { view: "export", label: "Export", icon: Download },
   { view: "tree", label: "Tree", icon: GitBranch },
   { view: "kin", label: "Kin page", icon: Contact },
   { view: "explore", label: "Explore", icon: Compass },

@@ -13,6 +13,8 @@ import { AnnouncementsPage } from "@/components/admin/pages/AnnouncementsPage";
 import { DashboardPage } from "@/components/admin/pages/DashboardPage";
 import { DuplicatesPage } from "@/components/admin/pages/DuplicatesPage";
 import { ExploreAdminPage } from "@/components/admin/pages/ExploreAdminPage";
+import { ExportPage } from "@/components/admin/pages/ExportPage";
+import { IncompletePage } from "@/components/admin/pages/IncompletePage";
 import { KinAdminPage } from "@/components/admin/pages/KinAdminPage";
 import { FeedbacksPage } from "@/components/admin/pages/FeedbacksPage";
 import { MembersPage } from "@/components/admin/pages/MembersPage";
@@ -42,7 +44,7 @@ import { useAuth } from "@/lib/auth";
 
 const searchSchema = z.object({
   view: z
-    .enum(["dashboard", "approval", "accounts", "family", "duplicates", "tree", "kin", "feedbacks", "announcements", "notifications", "explore", "translations", "settings"])
+    .enum(["dashboard", "approval", "accounts", "family", "duplicates", "incomplete", "export", "tree", "kin", "feedbacks", "announcements", "notifications", "explore", "translations", "settings"])
     .optional()
     .default("dashboard"),
 });
@@ -219,6 +221,10 @@ function AdminBody({
       return <MembersPage data={data} actions={actions} />;
     case "duplicates":
       return <DuplicatesPage data={data} actions={actions} />;
+    case "incomplete":
+      return <IncompletePage data={data} actions={actions} />;
+    case "export":
+      return <ExportPage data={data} actions={actions} />;
     case "tree":
       return <AdminTreePage />;
     case "feedbacks":

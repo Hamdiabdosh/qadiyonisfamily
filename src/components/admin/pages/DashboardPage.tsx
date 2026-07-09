@@ -69,7 +69,7 @@ export function DashboardPage({ data, feedbackCount }: Props) {
         <Card
           className="cursor-pointer border-amber-500/40 bg-amber-500/5"
           variant="interactive"
-          onClick={() => nav({ to: "/admin", search: { view: duplicates.length > 0 ? "family" : "approval" } })}
+          onClick={() => nav({ to: "/admin", search: { view: duplicates.length > 0 ? "duplicates" : "approval" } })}
         >
           <CardContent className="flex items-start gap-3 pt-4">
             <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />

@@ -67,6 +67,7 @@ export const familyMembers = pgTable("family_members", {
   deathYear: integer("death_year"),
   currentLocation: text("current_location"),
   photoUrl: text("photo_url"),
+  inviteToken: text("invite_token").unique(),
   submittedBy: text("submitted_by"),
   submitterPhone: text("submitter_phone"),
   submitterIsAlive: boolean("submitter_is_alive").default(true),

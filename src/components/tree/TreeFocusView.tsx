@@ -1,9 +1,13 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
+import { MemberAvatar } from "@/components/MemberAvatar";
+import { StatusBadge } from "@/components/StatusBadge";
 import { FamilyUnitCard } from "@/components/tree/FamilyUnitCard";
 import { TreeBreadcrumb } from "@/components/tree/TreeBreadcrumb";
+import { Button } from "@/components/ui/button";
 import { buildFamilyUnits, buildUnitLookup, type FamilyUnit, type WifeLink } from "@/lib/admin-family-units";
-import type { Member } from "@/lib/family";
+import { sortMembersByBirthOrder, statusOf, type Member } from "@/lib/family";
 import { useI18n } from "@/lib/i18n";
 
 type Props = {
@@ -15,25 +19,84 @@ type Props = {
 
 const COLLAPSE_KEY = "tree-collapsed";
 
-function resolveFocusedUnit(
+/** Own family unit only — do not fall back to parent unit (that blocked drill-down). */
+function resolveOwnUnit(
   focusMember: Member,
   units: FamilyUnit[],
   lookup: ReturnType<typeof buildUnitLookup>,
 ): FamilyUnit | null {
-  const ownUnit = lookup.byFather.get(focusMember.id) ?? lookup.byMother.get(focusMember.id);
-  if (ownUnit) return ownUnit;
+  return (
+    lookup.byFather.get(focusMember.id) ??
+    lookup.byMother.get(focusMember.id) ??
+    units.find((u) => u.key === `solo-${focusMember.id}`) ??
+    null
+  );
+}
 
-  if (focusMember.father_id) {
-    const parentUnit = lookup.byFather.get(focusMember.father_id);
-    if (parentUnit?.memberIds.includes(focusMember.id)) return parentUnit;
-  }
+function PersonFocusPanel({
+  member,
+  byId,
+  onFocusParent,
+}: {
+  member: Member;
+  byId: Map<number, Member>;
+  onFocusParent: (id: number) => void;
+}) {
+  const { t } = useI18n();
+  const father = member.father_id ? byId.get(member.father_id) : null;
+  const mother = member.mother_id ? byId.get(member.mother_id) : null;
 
-  if (focusMember.mother_id) {
-    const parentUnit = lookup.byMother.get(focusMember.mother_id);
-    if (parentUnit?.memberIds.includes(focusMember.id)) return parentUnit;
-  }
+  return (
+    <div className="space-y-3 rounded-xl border p-4">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <MemberAvatar
+          name={member.full_name}
+          photoUrl={member.photo_url}
+          size="xl"
+          status={statusOf(member)}
+        />
+        <div>
+          <p className="font-semibold">{member.full_name}</p>
+          <div className="mt-1 flex justify-center">
+            <StatusBadge m={member} />
+          </div>
+        </div>
+        {member.current_location ? (
+          <p className="text-xs text-muted-foreground">{member.current_location}</p>
+        ) : null}
+      </div>
 
-  return units.find((u) => u.key === `solo-${focusMember.id}`) ?? null;
+      {(father || mother) && (
+        <div className="space-y-1 text-sm">
+          <p className="text-xs font-medium text-muted-foreground">{t("parents")}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {father ? (
+              <button
+                type="button"
+                className="rounded-full border px-2 py-0.5 text-xs hover:bg-muted"
+                onClick={() => onFocusParent(father.id)}
+              >
+                {father.full_name}
+              </button>
+            ) : null}
+            {mother ? (
+              <button
+                type="button"
+                className="rounded-full border px-2 py-0.5 text-xs hover:bg-muted"
+                onClick={() => onFocusParent(mother.id)}
+              >
+                {mother.full_name}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      <Button asChild variant="outline" size="sm" className="w-full">
+        <Link to="/add-family">{t("addFamily")}</Link>
+      </Button>
+    </div>
+  );
 }
 
 export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Props) {
@@ -44,7 +107,7 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
 
   const root = useMemo(() => members.find((m) => m.is_root) ?? null, [members]);
   const focusMember = focusedId ? byId.get(focusedId) ?? null : root;
-  const focusedUnit = focusMember ? resolveFocusedUnit(focusMember, units, unitLookup) : null;
+  const ownUnit = focusMember ? resolveOwnUnit(focusMember, units, unitLookup) : null;
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
@@ -78,7 +141,7 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
 
   const siblings = useMemo(() => {
     if (!focusMember?.father_id) return [];
-    return members.filter((m) => m.father_id === focusMember.father_id);
+    return sortMembersByBirthOrder(members.filter((m) => m.father_id === focusMember.father_id));
   }, [members, focusMember]);
 
   if (!focusMember) return null;
@@ -86,9 +149,9 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
   return (
     <div className="space-y-3">
       <TreeBreadcrumb chain={chain} onFocus={onFocusChange} />
-      {focusedUnit ? (
+      {ownUnit ? (
         <FamilyUnitCard
-          unit={focusedUnit}
+          unit={ownUnit}
           byId={byId}
           collapsedGroups={collapsedGroups}
           onToggleGroup={(key) =>
@@ -102,9 +165,7 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
           onFocus={onFocusChange}
         />
       ) : (
-        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-          No family unit found for {focusMember.full_name}
-        </div>
+        <PersonFocusPanel member={focusMember} byId={byId} onFocusParent={onFocusChange} />
       )}
 
       {siblings.length > 1 ? (
@@ -115,7 +176,9 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
               <button
                 key={s.id}
                 type="button"
-                className="rounded-full border px-2 py-0.5 text-xs hover:bg-muted"
+                className={`rounded-full border px-2 py-0.5 text-xs hover:bg-muted ${
+                  s.id === focusMember.id ? "border-primary bg-primary/10 font-medium" : ""
+                }`}
                 onClick={() => onFocusChange(s.id)}
               >
                 {s.full_name}
@@ -127,4 +190,3 @@ export function TreeFocusView({ members, wives, focusedId, onFocusChange }: Prop
     </div>
   );
 }
-

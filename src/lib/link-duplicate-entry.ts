@@ -9,6 +9,7 @@ export type ParentEntry = {
   inKin: boolean | null;
   kinSide: "father" | "mother" | null;
   kinAnchorId: number | null;
+  photo: { base64: string; mimeType: string } | null;
 };
 
 export function linkDuplicateEntry(
@@ -33,6 +34,7 @@ export function linkDuplicateEntry(
     inKin: member.is_in_kin,
     kinSide: null,
     kinAnchorId: null,
+    photo: null,
   };
 
   if (hit.role === "father") {

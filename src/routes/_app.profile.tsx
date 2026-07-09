@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
-import { useQuery } from "@tanstack/react-query";
-import { Moon, Sun, Bell, Phone, LogOut, Shield, ChevronRight, Send } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Moon, Sun, Bell, Phone, LogOut, Shield, ChevronRight, Send, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppHeader } from "@/components/AppHeader";
@@ -11,12 +11,16 @@ import { SponsorAppDialog } from "@/components/SponsorAppDialog";
 import { PageTitleRow } from "@/components/PageTitleRow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n, type Lang } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
 import { useAuth } from "@/lib/auth";
 import { getPublicSettingsFn } from "@/lib/api/content.functions";
+import { getMyInviteLinkFn, updateMyProfileFn } from "@/lib/api/family.functions";
+import { APP_URL } from "@/lib/app-url";
 import { fetchAllMembers } from "@/lib/family";
 import { DEFAULT_CONTACT_ADMINS, telegramUrl, type ContactAdmin } from "@/lib/contact-admins";
 
@@ -78,17 +82,23 @@ function ProfilePage() {
   const { sponsor: openSponsor } = Route.useSearch();
   const [sponsorOpen, setSponsorOpen] = useState(false);
   const { t, lang, setLang } = useI18n();
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (openSponsor) setSponsorOpen(true);
   }, [openSponsor]);
   const { dark, toggleDark, notifications, setNotifications } = useSettings();
-  const { user, isAdmin, loading, signOut, linkMember } = useAuth();
+  const { user, isAdmin, loading, signOut, linkMember, refreshSession } = useAuth();
   const { data: settings } = useQuery({ queryKey: ["public-settings"], queryFn: getPublicSettingsFn });
   const { data: members = [] } = useQuery({
     queryKey: ["members", "approved"],
     queryFn: () => fetchAllMembers(false),
     enabled: !!user,
+  });
+  const { data: inviteLink } = useQuery({
+    queryKey: ["my-invite-link", user?.memberId],
+    queryFn: () => getMyInviteLinkFn(),
+    enabled: !!user?.memberId,
   });
 
   const me = members.find((m) => (user?.memberId ? m.id === user.memberId : m.full_name === user?.fullName));
@@ -97,10 +107,64 @@ function ProfilePage() {
     setMyMember(me);
   }, [me]);
 
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [location, setLocation] = useState("");
+  const [birthYear, setBirthYear] = useState("");
+  const [deathYear, setDeathYear] = useState("");
+  const [isAlive, setIsAlive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setFullName(myMember?.full_name ?? user?.fullName ?? "");
+    setPhone(user?.phone ?? "");
+    setLocation(myMember?.current_location ?? "");
+    setBirthYear(myMember?.birth_year != null ? String(myMember.birth_year) : "");
+    setDeathYear(myMember?.death_year != null ? String(myMember.death_year) : "");
+    setIsAlive(myMember?.is_alive ?? true);
+  }, [myMember, user]);
+
   const contactAdmins = settings?.contact_admins ?? DEFAULT_CONTACT_ADMINS;
 
-  const profileName = user?.fullName ?? "—";
-  const profileContact = user?.phone ?? user?.email ?? "—";
+  const copyInvite = async () => {
+    try {
+      const path = inviteLink?.path ?? (await getMyInviteLinkFn()).path;
+      if (!path) {
+        toast.error(t("inviteLinkFailed"));
+        return;
+      }
+      const url = `${typeof window !== "undefined" ? window.location.origin : APP_URL}${path}`;
+      await navigator.clipboard.writeText(url);
+      toast.success(t("inviteLinkCopied"));
+    } catch {
+      toast.error(t("inviteLinkFailed"));
+    }
+  };
+
+  const saveProfile = async () => {
+    if (!user?.memberId) return;
+    setSaving(true);
+    try {
+      const result = await updateMyProfileFn({
+        data: {
+          fullName: fullName.trim() || undefined,
+          phone: phone.trim() || undefined,
+          currentLocation: location.trim() || null,
+          birthYear: birthYear.trim() ? Number(birthYear) : null,
+          deathYear: !isAlive && deathYear.trim() ? Number(deathYear) : null,
+          isAlive,
+        },
+      });
+      if (result.member) setMyMember(result.member);
+      await qc.invalidateQueries({ queryKey: ["members"] });
+      await refreshSession();
+      toast.success(t("profileSaved"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("profileSaveFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div>
@@ -142,13 +206,66 @@ function ProfilePage() {
                     </Button>
                   </div>
                 ) : null}
-                <div className="space-y-1">
-                  {isAdmin ? (
-                    <p className="text-xs font-medium uppercase tracking-wide text-primary">{t("admin")}</p>
-                  ) : null}
-                  <p className="font-semibold">{profileName}</p>
-                  <p className="text-muted-foreground">{profileContact}</p>
-                </div>
+                {isAdmin ? (
+                  <p className="text-xs font-medium uppercase tracking-wide text-primary">{t("admin")}</p>
+                ) : null}
+                {user.memberId && myMember ? (
+                  <div className="space-y-3 rounded-xl border p-3">
+                    <p className="text-sm font-medium">{t("editMyInfo")}</p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-name">{t("fullNameLabel")}</Label>
+                      <Input id="profile-name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-phone">{t("phoneNumber")}</Label>
+                      <Input id="profile-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-location">{t("currentLocation")}</Label>
+                      <Input id="profile-location" value={location} onChange={(e) => setLocation(e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="profile-birth">{t("birthYear")}</Label>
+                        <Input
+                          id="profile-birth"
+                          inputMode="numeric"
+                          value={birthYear}
+                          onChange={(e) => setBirthYear(e.target.value)}
+                        />
+                      </div>
+                      {!isAlive ? (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="profile-death">{t("deathYear")}</Label>
+                          <Input
+                            id="profile-death"
+                            inputMode="numeric"
+                            value={deathYear}
+                            onChange={(e) => setDeathYear(e.target.value)}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                    {!myMember.is_root ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">{t("alive")}</span>
+                        <Switch checked={isAlive} onCheckedChange={setIsAlive} />
+                      </div>
+                    ) : null}
+                    <Button type="button" className="w-full" disabled={saving} onClick={saveProfile}>
+                      {saving ? t("loading") : t("saveProfile")}
+                    </Button>
+                    <Button type="button" variant="outline" className="w-full" onClick={copyInvite}>
+                      <Copy className="mr-2 size-4" />
+                      {t("copyInviteLink")}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="font-semibold">{user.fullName ?? "—"}</p>
+                    <p className="text-muted-foreground">{user.phone ?? user.email ?? "—"}</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-3">

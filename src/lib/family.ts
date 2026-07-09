@@ -85,6 +85,9 @@ export type SubmitFamilyParent = {
   inKin: boolean;
   kinSide: KinLinkSide | null;
   kinAnchorId: number | null;
+  /** Optional new-person photo (ignored when existingId is set). Requires online submit. */
+  photoBase64?: string | null;
+  photoMimeType?: string | null;
 };
 
 export type SubmitFamilyChild = {
@@ -95,6 +98,8 @@ export type SubmitFamilyChild = {
   /** 0-based index into the named mothers in the form (which tab the child was added under). */
   motherIndex: number;
   existingId?: number | null;
+  photoBase64?: string | null;
+  photoMimeType?: string | null;
 };
 
 export type SiblingOrderEntry = {
